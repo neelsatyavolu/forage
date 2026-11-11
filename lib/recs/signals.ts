@@ -14,7 +14,7 @@ export function haversineKm(a: LatLng, b: LatLng): number {
 const PRIOR_RATING = 4.0;
 const PRIOR_REVIEWS = 50;
 
-/** A live crowd rating (1-5) fetched for this request. Never stored (Google's terms). */
+/** A crowd rating (1-5). Nothing supplies one today (the only source is paid), so quality is neutral; kept for a free source. */
 export type CrowdRating = { rating: number; count: number | null };
 
 /**

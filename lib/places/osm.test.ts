@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearOsmCache, overpassNearby, photonSearch } from "./osm";
-import { fromOverpass, fromPhoton, overpassQuery } from "./osm-parse";
+import { clearOsmCache, photonNearby, photonSearch, USER_AGENT } from "./osm";
+import { fromOverpass, fromPhoton, overpassBoxQuery } from "./osm-parse";
 
 const photonFeature = (props: Record<string, unknown>, coords: [number, number] = [-122.42, 37.77]) => ({
   geometry: { coordinates: coords },
@@ -60,10 +60,11 @@ describe("fromOverpass", () => {
   });
 });
 
-describe("overpassQuery", () => {
-  it("asks for named food places around the point", () => {
-    const q = overpassQuery(37.7712345, -122.4, 1500, 100);
-    expect(q).toContain("(around:1500,37.77123,-122.40000)");
+describe("overpassBoxQuery", () => {
+  it("asks for named food places inside the box, south-west-north-east", () => {
+    const q = overpassBoxQuery({ minLat: 37.44, minLng: -122.18, maxLat: 37.46, maxLng: -122.14 }, 100, 8);
+    expect(q).toContain("(37.44000,-122.18000,37.46000,-122.14000)");
+    expect(q).toContain("[timeout:8]");
     expect(q).toContain("restaurant|cafe|bar");
     expect(q).toContain("out center tags 100");
   });
@@ -84,23 +85,23 @@ describe("network calls", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a busy Overpass once, then throws a 503", async () => {
-    const fetcher = vi.fn(async () => json({}, 429));
-    await expect(overpassNearby(1, 2, 1, fetcher as unknown as typeof fetch)).rejects.toMatchObject({ status: 503 });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+  it("asks Photon for food places around a point, with a named User-Agent", async () => {
+    const fetcher = vi.fn(async () => json({ features: [photonFeature({}), photonFeature({ osm_value: "parking", osm_id: 9 })] }));
+    const rows = await photonNearby({ lat: 37.4443, lng: -122.1598 }, 2, fetcher as unknown as typeof fetch);
+    expect(rows.map((r) => r.sourceId)).toEqual(["node/42"]);
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    const params = new URL(url).searchParams;
+    expect(new URL(url).pathname).toBe("/reverse");
+    expect([params.get("lat"), params.get("lon"), params.get("radius")]).toEqual(["37.44430", "-122.15980", "2"]);
+    expect(params.getAll("osm_tag")).toEqual(["amenity:restaurant", "amenity:cafe", "amenity:bar", "amenity:fast_food", "amenity:pub"]);
+    expect((init.headers as Record<string, string>)["User-Agent"]).toBe(USER_AGENT);
+    expect(USER_AGENT).toBe("Forage/1.0 (+https://forage.xanom.co)");
   });
 
-  it("moves on to the second Overpass server when the first is busy", async () => {
-    const fetcher = vi.fn(async (url: string) => (url.includes("overpass-api.de") ? json({}, 504) : json({ elements: [] })));
-    expect(await overpassNearby(3, 4, 1, fetcher as unknown as typeof fetch)).toEqual([]);
-    expect(fetcher.mock.calls.map((c) => new URL(String(c[0])).host)).toEqual(["overpass-api.de", "overpass.private.coffee"]);
-  });
-
-  it("parses Overpass elements", async () => {
-    const fetcher = vi.fn(async () => json({ elements: [{ type: "node", id: 1, lat: 1, lon: 2, tags: { amenity: "bar", name: "Tap" } }] }));
-    const rows = await overpassNearby(1, 2, 20, fetcher as unknown as typeof fetch);
-    expect(rows.map((r) => r.name)).toEqual(["Tap"]);
-    const body = String(((fetcher.mock.calls[0] as unknown[])[1] as RequestInit).body);
-    expect(decodeURIComponent(body)).toContain("around:5000,");
+  it("throws when Photon's nearby answer is unreadable or it stays busy", async () => {
+    await expect(photonNearby({ lat: 1, lng: 2 }, 1, (async () => json({ nope: 1 })) as unknown as typeof fetch)).rejects.toMatchObject({ status: 502 });
+    const busy = vi.fn(async () => json({}, 503));
+    await expect(photonNearby({ lat: 1, lng: 2 }, 1, busy as unknown as typeof fetch)).rejects.toMatchObject({ status: 503 });
+    expect(busy).toHaveBeenCalledTimes(2);
   });
 });

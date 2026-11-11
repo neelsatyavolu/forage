@@ -128,7 +128,15 @@ const USER_TABLES = [
 // The prediction before the user's calibration offset was added. Calibration
 // is fitted on actual minus this, so the offset doesn't feed back on itself.
 // Null on rows from before the column existed.
-const LATER = [`ALTER TABLE predictions ADD COLUMN IF NOT EXISTS raw_predicted double precision CHECK (raw_predicted BETWEEN 0 AND 10)`];
+const LATER = [
+  `ALTER TABLE predictions ADD COLUMN IF NOT EXISTS raw_predicted double precision CHECK (raw_predicted BETWEEN 0 AND 10)`,
+  // Map tiles (lib/places/tiles) whose OpenStreetMap places were last fetched
+  // from Overpass at fetched_at. The places themselves are in `places`.
+  `CREATE TABLE IF NOT EXISTS osm_tiles (
+    tile text PRIMARY KEY,
+    fetched_at timestamptz NOT NULL
+  )`,
+];
 
 const STATEMENTS = [...ACCOUNT_TABLES, ...PLACE_TABLES, ...USER_TABLES, ...LATER];
 

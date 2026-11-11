@@ -55,22 +55,14 @@ describe("recommendWith", () => {
     expect(stored?.rawPredicted).toBeCloseTo(recs[0].score + 2, 1);
   });
 
-  it("ranks again with live crowd ratings for the top new places, and survives a ratings failure", async () => {
-    const { deps, noodle2, grill } = await world();
+  it("makes no paid calls: only the place source is asked, and crowd quality stays neutral", async () => {
+    const { deps } = await world();
     const d = deps();
-    d.ratings = vi.fn(async (places: readonly Place[]) => new Map(places.map((p) => [p.id, { rating: p.id === grill.id ? 5 : 3, count: 5000 }])));
     const recs = await recommendWith(d, USER_A, { ...CTX, mode: "travel" });
-    expect(d.ratings).toHaveBeenCalledOnce();
-    expect(recs.find((r) => r.place.id === grill.id)?.signals.quality).toBeCloseTo(1, 1);
-    expect(recs.find((r) => r.place.id === noodle2.id)?.signals.quality).toBeCloseTo(0, 1);
-
-    d.ratings = async () => {
-      throw new Error("quota");
-    };
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const plain = await recommendWith(d, USER_A, CTX);
-    expect(plain[0].place.id).toBe(noodle2.id);
-    expect(plain.every((r) => r.signals.quality === null)).toBe(true);
+    expect(d.nearby).toHaveBeenCalledOnce();
+    expect(Object.keys(d).sort()).toEqual(["ai", "db", "nearby", "now"]);
+    expect(recs.length).toBeGreaterThan(0);
+    expect(recs.every((r) => r.signals.quality === null)).toBe(true);
   });
 
   it("Go-to returns places you've been, even when the source didn't list them", async () => {

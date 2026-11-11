@@ -1,14 +1,14 @@
 import "server-only";
 import { aiStatus, complete, type Owner } from "../ai";
 import { getDb } from "../db/client";
-import { nearbyPlaces, placeRatings } from "../places";
+import { nearbyPlaces } from "../places";
 import type { AskAi } from "../taste/ai";
 import type { Rec, RecContext } from "../types";
 import { recommendWith, type RecOptions } from "./engine";
 
 // Recommendations, owned by the taste-engine track: candidates from
 // lib/places, fast scoring from the user's visits, scores and taste profile
-// (with live Google ratings for the top places when GOOGLE_PLACES_KEY is set),
+// (no paid calls: crowd quality stays neutral without a free rating source),
 // then an optional AI rerank (lib/ai complete) that may only cite candidates
 // by id. Without an AI connection it returns the plain scoring, with no reasons.
 
@@ -25,5 +25,5 @@ export async function userAi(userId: string): Promise<AskAi | null> {
 
 /** Ranked recommendations for the user in this context, best first. */
 export async function recommend(userId: string, ctx: RecContext, opts: RecOptions = {}): Promise<Rec[]> {
-  return recommendWith({ db: await getDb(), nearby: nearbyPlaces, ratings: placeRatings, ai: await userAi(userId), now: Date.now() }, userId, ctx, opts);
+  return recommendWith({ db: await getDb(), nearby: nearbyPlaces, ai: await userAi(userId), now: Date.now() }, userId, ctx, opts);
 }

@@ -1,24 +1,28 @@
+import { z } from "zod";
 import type { LatLng, PlaceInput } from "../types";
 import { PlacesError } from "./errors";
-import { FOOD_AMENITIES, fromOverpass, fromPhoton, overpassQuery } from "./osm-parse";
+import { FOOD_AMENITIES, fromPhoton } from "./osm-parse";
 
-// OpenStreetMap lookups: Photon (komoot) for text search, Overpass for
-// what's nearby. Both are free and ask for light, identified use, so answers
-// are cached for a while, a busy refusal is retried once, and a request
-// that still fails throws, so "no answer" is never mistaken for "no places".
+// Photon (komoot), the free OpenStreetMap search: text search, and a nearby
+// fallback for when no Overpass mirror answers (see ./overpass). Photon asks
+// for light, identified use, so text answers are cached for a while, a busy
+// refusal is retried once, and a request that still fails throws, so
+// "no answer" is never mistaken for "no places".
 
 const PHOTON = "https://photon.komoot.io/api/";
-/** The main Overpass server is often at capacity; a busy answer moves on to the next. */
-const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
-const USER_AGENT = "Forage (forage.xanom.co)";
+const PHOTON_REVERSE = "https://photon.komoot.io/reverse";
+/** Sent to every OpenStreetMap service. Names the app, nothing about the user. */
+export const USER_AGENT = "Forage/1.0 (+https://forage.xanom.co)";
 const TIMEOUT_MS = 10_000;
 const RETRY_MS = 700;
 const CACHE_MS = 60 * 60_000;
 const CACHE_MAX = 300;
 const PHOTON_LIMIT = 20;
-const OVERPASS_LIMIT = 300;
-/** Overpass gets slow and heavy past this; wider searches also use stored places. */
-export const OVERPASS_MAX_KM = 5;
+/** Photon's most results per request. */
+const PHOTON_NEARBY_LIMIT = 50;
+/** The places the nearby fallback asks Photon for. */
+const NEARBY_AMENITIES = ["restaurant", "cafe", "bar", "fast_food", "pub"] as const;
+const PhotonAnswer = z.object({ features: z.array(z.unknown()) });
 
 type Cached = { at: number; rows: PlaceInput[] };
 const cache = new Map<string, Cached>();
@@ -66,21 +70,13 @@ export async function photonSearch(q: string, near: LatLng | null, fetcher: type
   return remember(key, rows);
 }
 
-/** Named places to eat or drink within radiusKm (capped at OVERPASS_MAX_KM). */
-export async function overpassNearby(lat: number, lng: number, radiusKm: number, fetcher: typeof fetch = fetch): Promise<PlaceInput[]> {
-  const km = Math.min(radiusKm, OVERPASS_MAX_KM);
-  // Round so nearby requests share a cache entry (about 100 m).
-  const key = `o:${lat.toFixed(3)},${lng.toFixed(3)},${km.toFixed(1)}`;
-  const hit = cache.get(key);
-  if (hit && hit.at > Date.now() - CACHE_MS) return hit.rows;
-  const body = (await fetchJson(
-    OVERPASS,
-    { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ data: overpassQuery(lat, lng, km * 1000, OVERPASS_LIMIT) }).toString() },
-    "The map data service",
-    fetcher,
-  )) as { elements?: unknown[] };
-  const rows = (Array.isArray(body.elements) ? body.elements : []).map(fromOverpass).filter((p): p is PlaceInput => p !== null);
-  return remember(key, rows);
+/** Up to 50 places to eat or drink within radiusKm, from Photon's reverse lookup. Not cached; callers store the result. */
+export async function photonNearby(at: LatLng, radiusKm: number, fetcher: typeof fetch = fetch): Promise<PlaceInput[]> {
+  const params = new URLSearchParams({ lat: at.lat.toFixed(5), lon: at.lng.toFixed(5), radius: String(radiusKm), limit: String(PHOTON_NEARBY_LIMIT), lang: "en" });
+  for (const a of NEARBY_AMENITIES) params.append("osm_tag", `amenity:${a}`);
+  const parsed = PhotonAnswer.safeParse(await fetchJson([`${PHOTON_REVERSE}?${params}`], {}, "Place search", fetcher));
+  if (!parsed.success) throw new PlacesError("Place search sent an answer Forage couldn't read.", 502);
+  return parsed.data.features.map(fromPhoton).filter((p): p is PlaceInput => p !== null);
 }
 
 /** Test hook: forget cached answers. */

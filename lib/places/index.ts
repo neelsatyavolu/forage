@@ -1,17 +1,20 @@
 import "server-only";
 import { getDb } from "../db/client";
-import { getPlace } from "../db/places";
+import { getPlace, type Box } from "../db/places";
 import { env } from "../server/env";
 import type { LatLng, Place } from "../types";
 import { googleClient, type LiveDetails } from "./google";
-import { overpassNearby, photonSearch } from "./osm";
-import { liveDetails, liveRatings, nearbyStored, searchStored } from "./store";
+import { nearbyWith } from "./nearby";
+import { photonNearby, photonSearch } from "./osm";
+import { overpassBox } from "./overpass";
+import { liveDetails, searchStored } from "./store";
 
 // Place lookup, owned by the places track. Both functions return places that
 // are already stored (upserted into `places` via lib/db/places), so every
 // result has a stable Forage id that visits, lists and recs can reference.
-// Sources: OpenStreetMap (Overpass for nearby, Photon for search); Google
-// Places adds live details when GOOGLE_PLACES_KEY is set (only its id is stored).
+// Sources are free: OpenStreetMap (Overpass mirrors for nearby, cached by map
+// tile, and Photon for search). Google Places is called only when someone
+// opens a place's details and GOOGLE_PLACES_KEY is set (only its id is stored).
 
 export { PlacesError } from "./errors";
 export type { LiveDetails } from "./google";
@@ -25,20 +28,11 @@ export async function searchPlaces(q: string, near?: LatLng): Promise<Place[]> {
 
 /** Restaurants, cafes and bars within radiusKm of a point, nearest first. */
 export async function nearbyPlaces(lat: number, lng: number, radiusKm: number): Promise<Place[]> {
-  return nearbyStored(await getDb(), { lat, lng }, radiusKm, () => overpassNearby(lat, lng, radiusKm), Date.now());
+  const deps = { db: await getDb(), overpass: (box: Box) => overpassBox(box), photon: (at: LatLng, km: number) => photonNearby(at, km), now: Date.now() };
+  return (await nearbyWith(deps, { lat, lng }, radiusKm)).places;
 }
 
-/** How long recs wait for live ratings before ranking without the slow ones. */
-const RATINGS_BUDGET_MS = 2500;
-
-/** Live Google ratings for places, by place id, for ranking only (never stored). Empty without a key. */
-export async function placeRatings(places: readonly Place[]): Promise<Map<string, { rating: number; count: number | null }>> {
-  const key = env().GOOGLE_PLACES_KEY;
-  if (!key || places.length === 0) return new Map();
-  return liveRatings(await getDb(), places, googleClient(key), Date.now(), RATINGS_BUDGET_MS);
-}
-
-/** Live Google details for a stored place, or null without a key or a match. */
+/** Live Google details for a stored place, or null without a key or a match. Only for a user opening one place, never for lists or recs. */
 export async function placeLiveDetails(placeId: string): Promise<LiveDetails | null> {
   const key = env().GOOGLE_PLACES_KEY;
   if (!key) return null;

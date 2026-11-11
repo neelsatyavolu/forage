@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { addPlace, freshDb, placeInput } from "../../test/db";
 import type { Db } from "./client";
-import { boxAround, deletePlace, findPlacesByName, getPlace, getPlaceBySource, getPlaces, placesInBox, setGooglePlaceId, upsertPlace, upsertPlaces } from "./places";
+import { markTiles, tileTimes } from "./osm-tiles";
+import { boxAround, deletePlace, findPlacesByName, getPlace, getPlaceBySource, getPlaces, getPlacesBySource, placesInBox, placesNearest, setGooglePlaceId, upsertPlace, upsertPlaces, upsertPlacesBatch } from "./places";
 
 let db: Db;
 beforeEach(async () => {
@@ -52,5 +53,29 @@ describe("boxAround", () => {
     const box = boxAround(60, 10, 111.32);
     expect(box.maxLat - 60).toBeCloseTo(1);
     expect(box.maxLng - 10).toBeCloseTo(2);
+  });
+});
+
+describe("batch place queries", () => {
+  it("upserts many in one statement, keeping ids and Google ids, and orders by nearness", async () => {
+    const first = await upsertPlace(db, placeInput({ googlePlaceId: "g1" }), 1);
+    const saved = await upsertPlacesBatch(db, [placeInput({ name: "Mian 2", cuisine: [] }), placeInput({ sourceId: "node/2", lat: 37.78 })], 2);
+    expect(saved.find((p) => p.sourceId === "node/1")).toMatchObject({ id: first.id, name: "Mian 2", googlePlaceId: "g1", cuisine: [], updatedAt: 2 });
+    expect(saved.find((p) => p.sourceId === "node/2")?.cuisine).toEqual(["chinese", "noodles"]);
+    expect(await upsertPlacesBatch(db, [], 3)).toEqual([]);
+    expect((await getPlacesBySource(db, "osm", ["node/2", "node/x"])).map((p) => p.sourceId)).toEqual(["node/2"]);
+    expect(await getPlacesBySource(db, "osm", [])).toEqual([]);
+    const near = await placesNearest(db, boxAround(37.78, -122.42, 3), { lat: 37.78, lng: -122.42 });
+    expect(near.map((p) => p.sourceId)).toEqual(["node/2", "node/1"]);
+    expect(await placesNearest(db, boxAround(37.78, -122.42, 3), { lat: 37.78, lng: -122.42 }, 1)).toHaveLength(1);
+  });
+
+  it("records tile fetch times", async () => {
+    expect(await tileTimes(db, ["1:1"])).toEqual(new Map());
+    await markTiles(db, ["1:1", "1:2", "1:1"], 1000);
+    await markTiles(db, ["1:2"], 2000);
+    expect(await tileTimes(db, ["1:1", "1:2", "9:9"])).toEqual(new Map([["1:1", 1000], ["1:2", 2000]]));
+    expect(await tileTimes(db, [])).toEqual(new Map());
+    await markTiles(db, [], 3000);
   });
 });

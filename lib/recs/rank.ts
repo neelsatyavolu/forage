@@ -19,7 +19,7 @@ export type RankInput = {
   wanted: ReadonlySet<string>;
   /** Added to predicted scores for places the user hasn't been to. */
   calibration: number;
-  /** Live crowd ratings by place id, for the places that have one this request. */
+  /** Crowd ratings by place id, when a free source provides them. Absent in the app today. */
   ratings?: ReadonlyMap<string, CrowdRating>;
 };
 

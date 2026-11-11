@@ -28,17 +28,17 @@ pnpm dev   # localhost:3000; the database is PGlite in .data/, reset links print
 | `DATABASE_URL` | production | Postgres (Neon). Locally defaults to `pglite://.data/forage`; `pglite://memory` for a throwaway one. |
 | `APP_URL` | production | The public site address. Used in reset links and as the base of the Lodestar client id and redirect URI. |
 | `RESEND_API_KEY` | optional | Sends reset emails from `no-reply@n3el.dev`. Without it the link is printed. |
-| `GOOGLE_PLACES_KEY` | optional | A server key for Places API (New). Adds live rating, price, hours and a Maps link to a place. Without it places come from OpenStreetMap only. |
+| `GOOGLE_PLACES_KEY` | optional, unset in production | A server key for Places API (New). Only used when someone opens one place's details, to add live rating, price, hours and a Maps link. Production runs without it so Forage costs nothing per request; recommendations and nearby search never call Google. |
 | `LODESTAR_URL` | optional | Defaults to `https://lodestar.xanom.co`. |
 
 ## How it works
 
 | Piece | Where | What it does |
 |---|---|---|
-| Places | `lib/places`, `app/api/places/*` | OpenStreetMap is the stored catalog: Photon for text search, Overpass for nearby (up to 5 km), cached for an hour, with a second Overpass server when the first is busy. A Photon result never wipes the cuisine, hours or website that Overpass already saved. If both Overpass servers fail, nearby returns the places already in the database. With `GOOGLE_PLACES_KEY`, a place is matched to Google once (rejected if more than 250 m away); only the Google place id is stored, and rating, price and hours are fetched each time, per Google's terms. |
+| Places | `lib/places`, `app/api/places/*` | Free sources only. OpenStreetMap is the stored catalog: Photon for text search, Overpass for nearby (up to 5 km). Nearby searches snap to a fixed grid of 0.02° tiles (about 2 km); a tile's places are stored in `places` and its fetch time in `osm_tiles`, and it's fetched again only after 14 days, so most searches never leave the database. Missing or stale tiles are fetched in one Overpass query, trying overpass-api.de, overpass.private.coffee, maps.mail.ru and overpass.kumi.systems in turn (3 s each, 8 s in all, User-Agent `Forage/1.0 (+https://forage.xanom.co)`). When no mirror answers, stale tiles are served as they are; an area never fetched asks Photon's reverse lookup for up to 50 restaurants, cafes, bars, pubs and fast food places instead. A Photon result never wipes the cuisine, hours or website that Overpass already saved. With `GOOGLE_PLACES_KEY`, opening a place's details matches it to Google once (rejected if more than 250 m away); only the Google place id is stored, and rating, price and hours are fetched each time, per Google's terms. |
 | Logging and scores | `lib/scoring`, `app/api/visits`, `app/api/comparisons` | Each place starts at its reaction band (loved 8.5, fine 6, didn't like 3.5). Comparisons are only against places in the same occasion and the same band, closest score first, at most two per visit. A Bradley-Terry model is refit on every write and mapped to 0–10, inside a database transaction. Editing or deleting a visit refits both occasions. |
 | Taste profile | `lib/taste` | Every place gets tags from one vocabulary: cuisine, dish, price, occasion, vibe, attributes and amenities, from OSM data, the user's own dishes and words in their notes. Each visit adds how much the user liked the place (its fitted score, else its reaction), centred on that user's average, to every tag on it. Visits lose half their weight after a year. With AI connected, "Update from my places" writes tag cards for logged places (from public facts only, since places are shared between users) and a plain-English taste summary the user can edit; an edited summary is never overwritten. |
-| Recommendations | `lib/recs`, `app/api/recs`, `app/api/explore/recs` | Candidates are real nearby places. Fast scoring mixes taste match, crowd rating (adjusted for review count), distance and novelty; the mode changes the mix. Travel weighs crowd rating more, Splurge boosts pricier and special-occasion places and ignores price dislikes, Stretch only shows cuisines you haven't logged, ranked by closeness to ones you like. With AI connected, the top 30 go to the model as short ids (`c1`…`c30`) with compact facts, your taste summary and your own places; it answers with ids and one line each that cites one of your places. Unknown or repeated ids are dropped, so it can't invent a restaurant. Any AI error falls back to the fast ranking. |
+| Recommendations | `lib/recs`, `app/api/recs`, `app/api/explore/recs` | Candidates are real nearby places. Fast scoring mixes taste match, crowd quality, distance and novelty; crowd quality is neutral for every place because no free rating source exists (recommendations make no Google calls); the mode changes the mix. Travel weighs crowd rating more, Splurge boosts pricier and special-occasion places and ignores price dislikes, Stretch only shows cuisines you haven't logged, ranked by closeness to ones you like. With AI connected, the top 30 go to the model as short ids (`c1`…`c30`) with compact facts, your taste summary and your own places; it answers with ids and one line each that cites one of your places. Unknown or repeated ids are dropped, so it can't invent a restaurant. Any AI error falls back to the fast ranking. |
 | Ask | `app/api/recs/ask`, `components/recs/ask-panel.tsx` | A sentence ("spicy, under $30, two people") and your location give three picks with reasons. Needs ChatGPT or Grok connected. |
 | Feedback | `lib/taste/feedback.ts`, `app/api/feedback` | Each recommendation call stores a prediction for the first 10 new places shown. When you later log one, the place shows "We predicted 8.4, you gave 7.1", and the average miss becomes a per-user offset (shrunk toward 0 with few samples, capped at ±2) on future predictions. |
 | Lists and map | `components/lists`, `components/map`, `app/api/want` | Been ranked by score with occasion filters, Want to try, and a MapLibre map on OpenFreeMap tiles (free, no key). |
@@ -71,8 +71,9 @@ pnpm build
 
 ## Limits
 
-- Overpass, the free nearby-search service, is often busy. When both servers fail, Near me and Explore only show places already in the database, so a new area can look empty.
-- Ratings are absent unless Google's live rating is attached to candidates, so the crowd-rating part of the score is neutral for now.
+- Overpass mirrors are often busy. When all four fail, a new area gets at most 50 places from Photon, without cuisine or hours, until a later search reaches Overpass.
+- A very dense area can fill Overpass's 3,000-element answer; those tiles aren't marked as fetched, so they're fetched again on the next search.
+- There are no crowd ratings, so the crowd-quality part of the score is neutral.
 - Ranking weights, the one-year half-life and the calibration limits were tuned on synthetic data only.
 - AI tag cards are written only for places you have logged; nearby candidates rely on OSM cuisine, price and attributes until the rerank.
 - There is no way to add a place OpenStreetMap doesn't have.
@@ -83,7 +84,7 @@ pnpm build
 
 ## Credits
 
-- Place data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL), searched through [Photon](https://photon.komoot.io) and [Overpass](https://overpass-api.de).
+- Place data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL), searched through [Photon](https://photon.komoot.io) and the public Overpass servers ([overpass-api.de](https://overpass-api.de), [private.coffee](https://overpass.private.coffee), [VK Maps](https://maps.mail.ru/osm/tools/overpass/), [Kumi Systems](https://overpass.kumi.systems)). Forage stores the places it fetches, as ODbL allows, and keeps this attribution.
 - Map tiles from [OpenFreeMap](https://openfreemap.org), drawn with [MapLibre GL JS](https://maplibre.org).
 
 ## License

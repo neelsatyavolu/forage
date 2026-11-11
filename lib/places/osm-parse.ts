@@ -1,3 +1,4 @@
+import type { Box } from "../db/places";
 import type { PlaceInput } from "../types";
 
 // Turns OpenStreetMap answers (Photon search features, Overpass elements)
@@ -96,8 +97,8 @@ export function fromOverpass(element: unknown): PlaceInput | null {
   };
 }
 
-/** The Overpass query for named places to eat or drink within radiusM of a point. */
-export function overpassQuery(lat: number, lng: number, radiusM: number, limit: number): string {
-  const around = `(around:${Math.round(radiusM)},${lat.toFixed(5)},${lng.toFixed(5)})`;
-  return `[out:json][timeout:20];(nwr["amenity"~"^(${FOOD_AMENITIES.join("|")})$"]["name"]${around};nwr["shop"="bakery"]["name"]${around};);out center tags ${limit};`;
+/** The Overpass query for named places to eat or drink inside a box (south, west, north, east). */
+export function overpassBoxQuery(box: Box, limit: number, timeoutS: number): string {
+  const bbox = `(${[box.minLat, box.minLng, box.maxLat, box.maxLng].map((d) => d.toFixed(5)).join(",")})`;
+  return `[out:json][timeout:${timeoutS}];(nwr["amenity"~"^(${FOOD_AMENITIES.join("|")})$"]["name"]${bbox};nwr["shop"="bakery"]["name"]${bbox};);out center tags ${limit};`;
 }

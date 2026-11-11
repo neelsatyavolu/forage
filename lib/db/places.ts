@@ -86,6 +86,50 @@ export async function placesInBox(q: Queryable, box: Box, limit = 500): Promise<
   return rows.map(rowToPlace);
 }
 
+/** Stored places inside a box, nearest to `center` first (flat-earth order, good enough inside a box). */
+export async function placesNearest(q: Queryable, box: Box, center: { lat: number; lng: number }, limit = 500): Promise<Place[]> {
+  const rows = await q.query(
+    `SELECT * FROM places WHERE lat BETWEEN $1 AND $2 AND lng BETWEEN $3 AND $4
+     ORDER BY (lat - $5) ^ 2 + ((lng - $6) * $7) ^ 2 LIMIT $8`,
+    [box.minLat, box.maxLat, box.minLng, box.maxLng, center.lat, center.lng, Math.cos((center.lat * Math.PI) / 180), limit],
+  );
+  return rows.map(rowToPlace);
+}
+
+/** Stored places for many source ids of one source, in one query. */
+export async function getPlacesBySource(q: Queryable, source: Place["source"], sourceIds: readonly string[]): Promise<Place[]> {
+  if (sourceIds.length === 0) return [];
+  const rows = await q.query("SELECT * FROM places WHERE source = $1 AND source_id = ANY($2::text[])", [source, sourceIds]);
+  return rows.map(rowToPlace);
+}
+
+/**
+ * upsertPlace for many places in one statement. Inputs must have distinct
+ * (source, sourceId). The result is in no particular order.
+ */
+export async function upsertPlacesBatch(q: Queryable, inputs: readonly PlaceInput[], now: number): Promise<Place[]> {
+  if (inputs.length === 0) return [];
+  const records = inputs.map((p) => ({
+    id: randomUUID(), source: p.source, source_id: p.sourceId, google_place_id: p.googlePlaceId, name: p.name, lat: p.lat, lng: p.lng,
+    address: p.address, city: p.city, country: p.country, cuisine: p.cuisine, price_level: p.priceLevel, tags: p.tags,
+  }));
+  const rows = await q.query(
+    `INSERT INTO places (id, source, source_id, google_place_id, name, lat, lng, address, city, country, cuisine, price_level, tags, updated_at)
+     SELECT x.id, x.source, x.source_id, x.google_place_id, x.name, x.lat, x.lng, x.address, x.city, x.country,
+       ARRAY(SELECT jsonb_array_elements_text(x.cuisine)), x.price_level, x.tags, $2
+     FROM jsonb_to_recordset($1::jsonb) AS x(id uuid, source text, source_id text, google_place_id text, name text, lat double precision,
+       lng double precision, address text, city text, country text, cuisine jsonb, price_level smallint, tags jsonb)
+     ON CONFLICT (source, source_id) DO UPDATE SET
+       google_place_id = COALESCE(EXCLUDED.google_place_id, places.google_place_id),
+       name = EXCLUDED.name, lat = EXCLUDED.lat, lng = EXCLUDED.lng, address = EXCLUDED.address,
+       city = EXCLUDED.city, country = EXCLUDED.country, cuisine = EXCLUDED.cuisine,
+       price_level = EXCLUDED.price_level, tags = EXCLUDED.tags, updated_at = EXCLUDED.updated_at
+     RETURNING *`,
+    [JSON.stringify(records), toTs(now)],
+  );
+  return rows.map(rowToPlace);
+}
+
 /** Stored places whose name contains the text, case-insensitively. */
 export async function findPlacesByName(q: Queryable, text: string, limit = 20): Promise<Place[]> {
   const pattern = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

@@ -9,7 +9,6 @@ import { plainSummary } from "../taste/summary";
 import type { Place, Rec, RecContext, RecMode } from "../types";
 import { predictScore, rankPlaces, type RecFilter } from "./rank";
 import { RERANK_POOL, rerank } from "./rerank";
-import type { CrowdRating } from "./signals";
 
 // recommend() with its I/O passed in, so tests can run it on PGlite with a
 // fake place source and a fake AI.
@@ -20,8 +19,6 @@ export type RecDeps = {
   /** The user's connected AI, or null when none is connected. */
   ai: AskAi | null;
   now: number;
-  /** Live crowd ratings for some places (not stored), or absent when no rating source is set up. */
-  ratings?: (places: readonly Place[]) => Promise<ReadonlyMap<string, CrowdRating>>;
 };
 
 export type RecOptions = {
@@ -39,8 +36,6 @@ const DEFAULT_FILTER: Record<RecMode, RecFilter> = { near: "new", travel: "all",
 
 /** Predictions are stored for the first few new places shown, for "we predicted X, you gave Y". */
 const RECORDED = 10;
-/** How many of the top new places get a live crowd rating before the final ranking. */
-const RATED = 12;
 
 export async function recommendWith(deps: RecDeps, userId: string, ctx: RecContext, opts: RecOptions = {}): Promise<Rec[]> {
   const recs = await rankAndRerank(deps, userId, ctx, opts);
@@ -73,10 +68,8 @@ async function rankAndRerank(deps: RecDeps, userId: string, ctx: RecContext, opt
     wanted: new Set(want.map((w) => w.placeId)),
     calibration,
   };
-  const first = rankPlaces(input);
-  // Crowd ratings are fetched live for the top new places, then the list is ranked again with them.
-  const ratings = await fetchRatings(deps, first);
-  const ranked = ratings.size ? rankPlaces({ ...input, ratings }) : first;
+  // No crowd ratings: every source of them costs money per request, so quality is neutral.
+  const ranked = rankPlaces(input);
   const limit = opts.limit ?? 30;
   if (!ai || ranked.length === 0) return ranked.slice(0, limit);
 
@@ -91,17 +84,5 @@ async function rankAndRerank(deps: RecDeps, userId: string, ctx: RecContext, opt
     if (opts.requireAi) throw err;
     console.error("[recs] rerank failed, using the fast ranking:", err instanceof Error ? err.message : err);
     return ranked.slice(0, limit);
-  }
-}
-
-async function fetchRatings(deps: RecDeps, ranked: readonly Rec[]): Promise<ReadonlyMap<string, CrowdRating>> {
-  if (!deps.ratings) return new Map();
-  const top = ranked.filter((r) => !r.signals.visited).slice(0, RATED).map((r) => r.place);
-  if (top.length === 0) return new Map();
-  try {
-    return await deps.ratings(top);
-  } catch (err) {
-    console.error("[recs] crowd ratings failed, ranking without them:", err instanceof Error ? err.message : err);
-    return new Map();
   }
 }

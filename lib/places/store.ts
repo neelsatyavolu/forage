@@ -1,5 +1,5 @@
 import type { Queryable } from "../db/client";
-import { boxAround, findPlacesByName, getPlaceBySource, placesInBox, setGooglePlaceId, upsertPlace } from "../db/places";
+import { findPlacesByName, getPlacesBySource, setGooglePlaceId, upsertPlacesBatch } from "../db/places";
 import type { LatLng, Place, PlaceInput } from "../types";
 import { byDistance, distanceKm } from "./geo";
 import type { GoogleClient, LiveDetails } from "./google";
@@ -13,11 +13,28 @@ export const SEARCH_LIMIT = 20;
 /** A Google match farther than this from the OSM point is a different place. */
 const GOOGLE_MATCH_KM = 0.25;
 
-/** Upserts fetched places without losing details already stored for them. */
+/** Rows per upsert statement, so a big Overpass answer stays a few queries. */
+const SAVE_CHUNK = 500;
+const sourceKey = (p: Pick<PlaceInput, "source" | "sourceId">) => `${p.source}:${p.sourceId}`;
+
+/**
+ * Upserts fetched places without losing details already stored for them.
+ * Returns one place per distinct source id, in input order (a repeat keeps its last version).
+ */
 export async function saveFetched(q: Queryable, inputs: readonly PlaceInput[], now: number): Promise<Place[]> {
-  const out: Place[] = [];
-  for (const input of inputs) out.push(await upsertPlace(q, mergeInput(await getPlaceBySource(q, input.source, input.sourceId), input), now));
-  return out;
+  const unique = [...new Map(inputs.map((p) => [sourceKey(p), p])).values()];
+  const saved = new Map<string, Place>();
+  for (let i = 0; i < unique.length; i += SAVE_CHUNK) {
+    const chunk = unique.slice(i, i + SAVE_CHUNK);
+    const existing = new Map<string, Place>();
+    for (const source of new Set(chunk.map((p) => p.source))) {
+      const ids = chunk.filter((p) => p.source === source).map((p) => p.sourceId);
+      for (const p of await getPlacesBySource(q, source, ids)) existing.set(sourceKey(p), p);
+    }
+    const merged = chunk.map((p) => mergeInput(existing.get(sourceKey(p)) ?? null, p));
+    for (const p of await upsertPlacesBatch(q, merged, now)) saved.set(sourceKey(p), p);
+  }
+  return [...new Map(inputs.map((p) => [sourceKey(p), saved.get(sourceKey(p))!])).values()];
 }
 
 const uniqueById = (rows: readonly Place[]) => [...new Map(rows.map((p) => [p.id, p])).values()];
@@ -40,18 +57,6 @@ export async function searchStored(q: Queryable, text: string, near: LatLng | nu
   return uniqueById([...fetched, ...extra]).slice(0, SEARCH_LIMIT);
 }
 
-/** Nearby: fetched and stored places within radiusKm, nearest first. A failed fetch falls back to stored places. */
-export async function nearbyStored(q: Queryable, at: LatLng, radiusKm: number, fetchPlaces: () => Promise<PlaceInput[]>, now: number): Promise<Place[]> {
-  let fetched: Place[] = [];
-  try {
-    fetched = await saveFetched(q, await fetchPlaces(), now);
-  } catch (err) {
-    console.error("[places] nearby fell back to stored places:", err instanceof Error ? err.message : err);
-  }
-  const stored = await placesInBox(q, boxAround(at.lat, at.lng, radiusKm));
-  return byDistance(uniqueById([...fetched, ...stored]).filter((p) => distanceKm(at, p) <= radiusKm), at);
-}
-
 /**
  * Google's live details for a stored place, matching it to a Google id the
  * first time (only that id is saved). Null when Google has no match nearby.
@@ -65,38 +70,4 @@ export async function liveDetails(q: Queryable, place: Place, google: GoogleClie
     await setGooglePlaceId(q, place.id, googleId, now);
   }
   return google.details(googleId);
-}
-
-/** Resolves to null on error or when the budget runs out, so one slow call can't hold up the rest. */
-async function within<T>(work: Promise<T>, budgetMs: number): Promise<T | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), budgetMs);
-  });
-  try {
-    return await Promise.race([work.catch(() => null), timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Live crowd ratings for places, fetched in parallel within a time budget, by
- * place id. Places with no Google match, no rating, an error or a slow answer
- * are left out. The ratings are used for this request only and never stored.
- */
-export async function liveRatings(
-  q: Queryable,
-  places: readonly Place[],
-  google: GoogleClient,
-  now: number,
-  budgetMs: number,
-): Promise<Map<string, { rating: number; count: number | null }>> {
-  const details = await Promise.all(places.map((p) => within(liveDetails(q, p, google, now), budgetMs)));
-  return new Map(
-    places.flatMap((p, i) => {
-      const d = details[i];
-      return d && d.rating !== null ? [[p.id, { rating: d.rating, count: d.ratingCount }] as const] : [];
-    }),
-  );
 }
