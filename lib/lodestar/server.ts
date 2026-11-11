@@ -2,9 +2,12 @@ import "server-only";
 import { deriveKey } from "../ai/seal";
 import { getDb } from "../db/client";
 import { deleteLodestarLink, getLodestarLink } from "../db/links";
+import { deleteTasteSeed } from "../db/taste-seeds";
 import { env } from "../server/env";
+import type { TasteSeed } from "../types";
 import { lodestarClient, type LodestarClient } from "./client";
 import { linkLabel, lodestarConfig, type LodestarConfig } from "./config";
+import { importPreferencesWith } from "./import";
 import { dbTokenSource, openTokens, saveTokens, tokenKey } from "./store";
 import { exchangeCode, refreshTokens } from "./tokens";
 
@@ -38,11 +41,14 @@ export async function finishLink(userId: string, code: string, verifier: string)
 }
 
 /**
- * Removes the link. Lodestar has no revocation endpoint, so its grant stays
- * until it expires or the user removes Forage in Lodestar's settings.
+ * Removes the link and the preferences imported through it. Lodestar has no
+ * revocation endpoint, so its grant stays until it expires or the user
+ * removes Forage in Lodestar's settings.
  */
 export async function unlink(userId: string): Promise<boolean> {
-  return deleteLodestarLink(await getDb(), userId);
+  const db = await getDb();
+  await deleteTasteSeed(db, userId);
+  return deleteLodestarLink(db, userId);
 }
 
 export async function lodestarFor(userId: string): Promise<LodestarClient> {
@@ -50,4 +56,9 @@ export async function lodestarFor(userId: string): Promise<LodestarClient> {
   const db = await getDb();
   const tokens = dbTokenSource(db, sealKey(), userId, (rt) => refreshTokens(fetch, cfg, rt, Date.now()), Date.now);
   return lodestarClient({ fetch, mcpUrl: cfg.mcpUrl, tokens, now: Date.now });
+}
+
+/** Imports the linked account's Lodestar dining preferences into the taste profile. */
+export async function importPreferences(userId: string): Promise<TasteSeed> {
+  return importPreferencesWith(await getDb(), await lodestarFor(userId), userId, Date.now());
 }

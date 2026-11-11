@@ -1,17 +1,19 @@
 import type { Queryable } from "../db/client";
 import { getTasteProfile, saveTasteSummary, saveTasteWeights } from "../db/taste";
-import type { TasteProfile } from "../types";
+import { getTasteSeed } from "../db/taste-seeds";
+import type { TasteProfile, TasteSeed } from "../types";
 import type { AskAi } from "./ai";
 import { storeCard, writeCards } from "./card";
 import { loadHistory } from "./history";
 import { computeWeights, type HistoryItem } from "./profile";
+import { seedWeights } from "./seed";
 import { writeSummary } from "./summary";
 
-/** Recomputes and saves the user's weights from their history. */
-export async function refreshWeights(q: Queryable, userId: string, now: number): Promise<{ history: HistoryItem[]; profile: TasteProfile }> {
-  const history = await loadHistory(q, userId);
-  const profile = await saveTasteWeights(q, userId, computeWeights(history, now), now);
-  return { history, profile };
+/** Recomputes and saves the user's weights from their history, plus cuisines imported from Lodestar. */
+export async function refreshWeights(q: Queryable, userId: string, now: number): Promise<{ history: HistoryItem[]; profile: TasteProfile; seed: TasteSeed | null }> {
+  const [history, seed] = await Promise.all([loadHistory(q, userId), getTasteSeed(q, userId)]);
+  const profile = await saveTasteWeights(q, userId, seedWeights(computeWeights(history, now), seed), now);
+  return { history, profile, seed };
 }
 
 export type RefreshResult = { profile: TasteProfile; cardsWritten: number; summaryWritten: boolean };

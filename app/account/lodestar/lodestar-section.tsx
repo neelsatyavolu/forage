@@ -17,6 +17,18 @@ const OUTCOME: Record<string, { text: string; error: boolean }> = {
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
+type Seed = { cuisines: string[]; dietary: string[]; priceCeiling: number | null };
+
+/** "Imported 4 cuisines, vegetarian, budget $$." */
+function importedText(seed: Seed): string {
+  const parts = [
+    `${seed.cuisines.length} ${seed.cuisines.length === 1 ? "cuisine" : "cuisines"}`,
+    ...seed.dietary.map((d) => d.replace(/_/g, " ")),
+    seed.priceCeiling ? `budget ${"$".repeat(seed.priceCeiling)}` : null,
+  ].filter(Boolean);
+  return `Imported ${parts.join(", ")}.`;
+}
+
 /** Read and clear the callback's ?lodestar= result, so a reload doesn't show it again. */
 function takeOutcome(): { text: string; error: boolean } | null {
   const url = new URL(window.location.href);
@@ -57,6 +69,19 @@ export function LodestarSection() {
     }
   };
 
+  const importPrefs = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { seed } = await post<{ seed: Seed }>("/api/lodestar/preferences", {});
+      setMessage({ text: importedText(seed), error: false });
+    } catch (err) {
+      setMessage({ text: err instanceof Error ? err.message : "Couldn't import preferences.", error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const disconnect = async () => {
     setBusy(true);
     setMessage(null);
@@ -73,7 +98,7 @@ export function LodestarSection() {
   return (
     <SectionRule label="Lodestar" meta={status?.linked ? `Connected ${day(status.connectedAt)}` : undefined}>
       <p className="max-w-[60ch] text-body">
-        Connect your Lodestar account to explore around your trips and add restaurants to a trip day. Your Forage and Lodestar sign-ins stay separate.
+        Connect your Lodestar account to explore around your trips and add restaurants to a trip day. Your liked cuisines, dietary needs and dining budget come over too, without changing what your own visits say. Your Forage and Lodestar sign-ins stay separate.
       </p>
       <div className="mt-6 flex min-h-12 items-center justify-between gap-4 border-y border-hairline py-2">
         <span className="text-[14px] font-medium">{status?.linked ? (status.label ?? "Lodestar") : "Lodestar Trips"}</span>
@@ -90,6 +115,15 @@ export function LodestarSection() {
           </Button>
         )}
       </div>
+      {status?.linked && (
+        <div className="flex min-h-12 items-center justify-between gap-4 border-b border-hairline py-2">
+          <span className="text-[14px]">Dining preferences</span>
+          <Button size="sm" onClick={importPrefs} disabled={busy}>
+            {busy && <Spinner />}
+            Import from Lodestar
+          </Button>
+        </div>
+      )}
       {status?.linked && <p className="mt-2 text-[12px] text-mute">Disconnecting removes the link here. To end it on Lodestar&apos;s side too, remove Forage in Lodestar&apos;s settings.</p>}
       {message && <p className={`mt-2 font-mono text-[12px] ${message.error ? "text-danger" : "text-ok"}`}>{message.text}</p>}
     </SectionRule>

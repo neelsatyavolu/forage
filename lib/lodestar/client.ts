@@ -2,16 +2,18 @@ import { LodestarError } from "./errors";
 import { callTool, type ToolOutput } from "./mcp";
 import type { TokenSource } from "./store";
 import { isExpired } from "./tokens";
+import { GetPreferencesSchema, type LodestarPreferences } from "./preferences";
 import { AddItemsSchema, GetTripSchema, ListTripsSchema, type TripDetail, type TripSummary } from "./trips";
 import type { z } from "zod";
 
-// Lodestar's Trips tools, as the linked account. An expired access token is
+// Lodestar's Trips and preferences tools, as the linked account. An expired access token is
 // refreshed before the call; a 401 refreshes once and retries once.
 
 export type LodestarClient = {
   listTrips(): Promise<TripSummary[]>;
   getTrip(tripId: string): Promise<TripDetail>;
   addItems(tripId: string, items: Record<string, unknown>[]): Promise<string[]>;
+  getPreferences(): Promise<LodestarPreferences>;
 };
 
 export type ClientDeps = { fetch: typeof fetch; mcpUrl: string; tokens: TokenSource; now: () => number };
@@ -40,5 +42,6 @@ export function lodestarClient(deps: ClientDeps): LodestarClient {
     listTrips: async () => (await typed(ListTripsSchema, "list_trips", {})).trips,
     getTrip: async (tripId) => (await typed(GetTripSchema, "get_trip", { tripId })).trip,
     addItems: async (tripId, items) => (await typed(AddItemsSchema, "add_items", { tripId, items })).itemIds,
+    getPreferences: () => typed(GetPreferencesSchema, "get_preferences", {}),
   };
 }

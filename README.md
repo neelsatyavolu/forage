@@ -52,9 +52,10 @@ Forage has its own accounts. "Connect Lodestar" on the Account page links one Fo
 
 - Forage is an OAuth public client of Lodestar, identified by a Client ID Metadata Document at `APP_URL/oauth/client-metadata.json`. The redirect URI is `APP_URL/oauth/lodestar/callback`.
 - `POST /api/lodestar/connect` makes a PKCE S256 verifier and state, keeps them in a 10-minute encrypted cookie tied to the signed-in user, and returns Lodestar's consent URL (scope `trips`, resource Lodestar's `/api/mcp`). The callback checks state and issuer, exchanges the code and stores the tokens sealed in `lodestar_links`. It never signs anyone in.
-- Forage calls Lodestar's MCP endpoint over Streamable HTTP with tools `list_trips`, `get_trip` and `add_items`. Tokens refresh a minute before they expire. Lodestar rotates refresh tokens and revokes the link if one is reused, so the refresh locks the row first.
+- Forage calls Lodestar's MCP endpoint over Streamable HTTP with tools `list_trips`, `get_trip`, `add_items` and `get_preferences`. Tokens refresh a minute before they expire. Lodestar rotates refresh tokens and revokes the link if one is reused, so the refresh locks the row first.
 - In Explore your trips appear with their destination and dates, and "Add to trip" adds a pick to a day. The restaurant details sent come from Forage's database, not the request.
-- Disconnect deletes Forage's copy. Lodestar has no revoke endpoint, so also remove Forage in Lodestar's settings.
+- Connecting (and "Import from Lodestar" on the Account page) calls `get_preferences` and stores the result in `taste_seeds`. Liked cuisines become taste weights of 0.4, but only where the user's own visits have no weight for that cuisine or a weaker positive one; a cuisine their visits rate higher, or negatively, keeps the visit-derived weight. Dietary needs (vegetarian, vegan, gluten-free, halal, kosher, lactose-free, pescetarian) hide new places that OpenStreetMap marks as not serving them, in every mode. The dining budget ($ to $$$$) is a price ceiling for Near me only; Splurge and the other modes ignore it. Places you've been to are never hidden. A failed import doesn't stop the link.
+- Disconnect deletes Forage's copy of the tokens and the imported preferences. Lodestar has no revoke endpoint, so also remove Forage in Lodestar's settings.
 
 Lodestar refuses a client id on `http://localhost`, an IP address or a single-word host, so linking only works when `APP_URL` is a public https address (a tunnel works for development).
 
@@ -78,7 +79,8 @@ pnpm build
 - AI tag cards are written only for places you have logged; nearby candidates rely on OSM cuisine, price and attributes until the rerank.
 - There is no way to add a place OpenStreetMap doesn't have.
 - Quick start logs places as loved with today's date and asks no comparisons, so they all start at 8.5.
-- Lodestar's dining preferences can't be imported yet: no Lodestar MCP tool returns them.
+- Dietary needs only hide places whose OpenStreetMap data says `diet:<need>=no`; most places don't say either way, so they still show.
+- The dining budget only hides places with a known price, which OpenStreetMap rarely has.
 - The Lodestar link has only been tested against fake responses, not the live Lodestar.
 - Map pins don't cluster.
 

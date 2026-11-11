@@ -133,3 +133,26 @@ describe("rankPlaces", () => {
     expect(ids(input({ candidates: [p, p] }))).toEqual(["dup"]);
   });
 });
+
+describe("imported Lodestar preferences", () => {
+  const meaty = place("meaty", ["burger"], 0.5, { tags: { dietNo: ["vegetarian"] } });
+  const pricey = place("pricey", ["sushi"], 0.5, { priceLevel: 4 });
+  const unknownPrice = place("unknown-price", ["sushi"], 0.5, { priceLevel: null });
+  const candidates = [meaty, pricey, unknownPrice, place("cheap", ["sushi"], 0.5, { priceLevel: 1 })];
+  const seed = { cuisines: [], dietary: ["vegetarian"], priceCeiling: 2 };
+
+  it("hides new places marked as not serving a needed diet, in every mode", () => {
+    for (const mode of ["near", "travel", "splurge"] as const) expect(ids(input({ candidates, seed, ctx: { mode } }))).not.toContain("meaty");
+    expect(ids(input({ candidates }))).toContain("meaty");
+  });
+
+  it("caps price in Near me only, keeping places with no known price", () => {
+    expect(ids(input({ candidates, seed })).sort()).toEqual(["cheap", "unknown-price"]);
+    expect(ids(input({ candidates, seed, ctx: { mode: "splurge" } }))).toContain("pricey");
+  });
+
+  it("never hides places the user has been to", () => {
+    const beenMeaty = been(meaty, "loved");
+    expect(ids(input({ candidates: [meaty], history: [beenMeaty], filter: "goto", seed }))).toEqual(["meaty"]);
+  });
+});

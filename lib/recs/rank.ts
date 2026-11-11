@@ -1,7 +1,7 @@
 import { adjacent } from "../taste/families";
 import { placeValue, tasteSimilarity, visitScore, type HistoryItem } from "../taste/profile";
 import { placeTags, splitCuisine, valueOf } from "../taste/vocab";
-import type { Place, Rec, RecContext, TasteWeights } from "../types";
+import type { Place, Rec, RecContext, TasteSeed, TasteWeights } from "../types";
 import { MODE_MIX, combine, distanceScore, haversineKm, qualityPrior, specialness, type CrowdRating, type Signals } from "./signals";
 
 // The fast ranking: pure, no I/O, so it is the same in the app, the tests and
@@ -21,6 +21,8 @@ export type RankInput = {
   calibration: number;
   /** Crowd ratings by place id, when a free source provides them. Absent in the app today. */
   ratings?: ReadonlyMap<string, CrowdRating>;
+  /** Preferences imported from Lodestar: dietary needs hide new places marked as not serving them; the price ceiling applies to Near me. */
+  seed?: TasteSeed | null;
 };
 
 const WANTED_BONUS = 0.05;
@@ -53,7 +55,17 @@ function prepare(input: RankInput): Context {
   return { ...input, byId, triedCuisines, recentCuisines: recent.flatMap((r) => r.cuisines), likedCuisines };
 }
 
+/** A new place the user's imported needs rule out: it marks a diet they need as not served, or (Near me) costs more than their budget. */
+function ruledOut(c: Context, place: Place): boolean {
+  const seed = c.seed;
+  if (!seed) return false;
+  const dietNo = place.tags.dietNo ?? [];
+  if (seed.dietary.some((d) => dietNo.includes(d))) return true;
+  return c.ctx.mode === "near" && seed.priceCeiling !== null && place.priceLevel !== null && place.priceLevel > seed.priceCeiling;
+}
+
 function keep(c: Context, place: Place, item: HistoryItem | undefined): boolean {
+  if (!item && ruledOut(c, place)) return false;
   if (c.ctx.mode === "stretch") {
     const cuisines = splitCuisine(place.cuisine);
     return !item && cuisines.length > 0 && !cuisines.some((x) => c.triedCuisines.has(x));

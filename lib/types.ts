@@ -27,6 +27,8 @@ export const PlaceTagsSchema = z.looseObject({
   vibe: z.array(z.string()).optional(),
   attributes: z.array(z.string()).optional(),
   occasions: z.array(OccasionSchema).optional(),
+  /** OSM diet keys the place marks as not served (`diet:vegan=no`). */
+  dietNo: z.array(z.string()).optional(),
   openingHours: z.string().optional(),
   website: z.string().optional(),
   phone: z.string().optional(),
@@ -98,6 +100,9 @@ export const TasteProfileSchema = z.object({
   updatedAt: z.number(),
 });
 export type TasteProfile = z.infer<typeof TasteProfileSchema>;
+
+/** Dining preferences imported from Lodestar: liked cuisine slugs, OSM diet keys, and a price ceiling (1-4) for Near me. */
+export type TasteSeed = { cuisines: string[]; dietary: string[]; priceCeiling: number | null };
 
 /** predicted is what the user was shown; rawPredicted is the same before the calibration offset. */
 export type Prediction = { id: number; userId: string; placeId: string; predicted: number; rawPredicted: number; actual: number | null; createdAt: number };

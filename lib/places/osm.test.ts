@@ -54,6 +54,12 @@ describe("fromOverpass", () => {
     });
   });
 
+  it("records diets a place marks as not served", () => {
+    const tags = { ...way.tags, "diet:vegetarian": "no", "diet:vegan": "no", "diet:halal": "yes" };
+    expect(fromOverpass({ ...way, tags })?.tags.dietNo).toEqual(["vegetarian", "vegan"]);
+    expect(fromOverpass(way)?.tags).not.toHaveProperty("dietNo");
+  });
+
   it("drops unnamed or non-food elements", () => {
     expect(fromOverpass({ ...way, tags: { amenity: "cafe" } })).toBeNull();
     expect(fromOverpass({ ...way, tags: { amenity: "bank", name: "Bank" } })).toBeNull();

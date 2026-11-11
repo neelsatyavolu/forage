@@ -51,7 +51,7 @@ async function rankAndRerank(deps: RecDeps, userId: string, ctx: RecContext, opt
   if (opts.requireAi && !ai) throw new AiError("not_connected", "Connect ChatGPT or Grok on the Account page to use Ask.");
 
   await syncFeedback(db, userId);
-  const [{ history, profile }, calibration, want, nearby] = await Promise.all([
+  const [{ history, profile, seed }, calibration, want, nearby] = await Promise.all([
     refreshWeights(db, userId, now),
     userCalibration(db, userId),
     listWant(db, userId),
@@ -67,6 +67,7 @@ async function rankAndRerank(deps: RecDeps, userId: string, ctx: RecContext, opt
     filter: opts.filter ?? DEFAULT_FILTER[ctx.mode],
     wanted: new Set(want.map((w) => w.placeId)),
     calibration,
+    seed,
   };
   // No crowd ratings: every source of them costs money per request, so quality is neutral.
   const ranked = rankPlaces(input);

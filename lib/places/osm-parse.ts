@@ -51,6 +51,8 @@ export function fromPhoton(feature: unknown): PlaceInput | null {
 }
 
 const YES = (v: unknown) => v === "yes" || v === "only";
+/** OSM diet keys checked against a user's dietary needs; `diet:<key>=no` means the place can't serve it. */
+export const DIET_KEYS = ["vegetarian", "vegan", "gluten_free", "halal", "kosher", "lactose_free", "pescetarian"] as const;
 
 /** An Overpass element (node, or way/relation with `out center`) as a place. */
 export function fromOverpass(element: unknown): PlaceInput | null {
@@ -75,8 +77,10 @@ export function fromOverpass(element: unknown): PlaceInput | null {
     YES(t["diet:vegan"]) ? "vegan options" : null,
     YES(t.wheelchair) ? "wheelchair accessible" : null,
   ].filter((a): a is string => a !== null);
+  const dietNo = DIET_KEYS.filter((k) => t[`diet:${k}`] === "no");
   const tags = {
     attributes,
+    ...(dietNo.length ? { dietNo } : {}),
     ...(str(t.opening_hours) ? { openingHours: str(t.opening_hours)!.slice(0, 500) } : {}),
     ...(str(t.website) ?? str(t["contact:website"]) ? { website: (str(t.website) ?? str(t["contact:website"]))!.slice(0, 500) } : {}),
     ...(str(t.phone) ?? str(t["contact:phone"]) ? { phone: (str(t.phone) ?? str(t["contact:phone"]))!.slice(0, 60) } : {}),

@@ -136,6 +136,15 @@ const LATER = [
     tile text PRIMARY KEY,
     fetched_at timestamptz NOT NULL
   )`,
+  // Dining preferences imported from Lodestar: liked cuisines seed taste
+  // weights, dietary needs (OSM diet keys) filter places, price_ceiling caps Near me.
+  `CREATE TABLE IF NOT EXISTS taste_seeds (
+    user_id uuid PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    cuisines text[] NOT NULL DEFAULT '{}',
+    dietary text[] NOT NULL DEFAULT '{}',
+    price_ceiling smallint CHECK (price_ceiling BETWEEN 1 AND 4),
+    updated_at timestamptz NOT NULL
+  )`,
 ];
 
 const STATEMENTS = [...ACCOUNT_TABLES, ...PLACE_TABLES, ...USER_TABLES, ...LATER];

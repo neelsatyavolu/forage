@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { CALLBACK_PATH } from "@/lib/lodestar/config";
 import { LodestarError } from "@/lib/lodestar/errors";
 import { FLOW_COOKIE, openFlow } from "@/lib/lodestar/flow";
-import { config, finishLink, flowKey } from "@/lib/lodestar/server";
+import { config, finishLink, flowKey, importPreferences } from "@/lib/lodestar/server";
 import { currentUserId } from "@/lib/server/auth";
 import { env } from "@/lib/server/env";
 import { allow } from "@/lib/server/limits";
@@ -41,9 +41,15 @@ export async function GET(req: Request) {
 
   try {
     await finishLink(userId, code, flow.verifier);
-    return back("connected");
   } catch (err) {
     console.error("[lodestar] link failed:", err instanceof LodestarError ? err.message : err);
     return back("failed");
   }
+  // The link stands even if this fails; the Account page can import again.
+  try {
+    await importPreferences(userId);
+  } catch (err) {
+    console.error("[lodestar] preference import failed:", err instanceof LodestarError ? err.message : err);
+  }
+  return back("connected");
 }
