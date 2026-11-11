@@ -11,6 +11,7 @@ export const TABS = [
   { href: "/", label: "Near me" },
   { href: "/explore", label: "Explore" },
   { href: "/lists", label: "Lists" },
+  { href: "/log", label: "Log" },
   { href: "/ask", label: "Ask" },
   { href: "/account", label: "Account" },
 ] as const;
