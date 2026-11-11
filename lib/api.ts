@@ -1,0 +1,100 @@
+import "server-only";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { AiError } from "./ai/errors";
+
+// One response envelope for every JSON route: {ok: true, data} or {ok: false, error}.
+
+/** An error whose message is safe to show the user, with the HTTP status to answer with. */
+export class HttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+export function ok<T>(data: T, init?: ResponseInit): NextResponse {
+  return NextResponse.json({ ok: true, data }, init);
+}
+
+export function fail(error: string, status: number): NextResponse {
+  return NextResponse.json({ ok: false, error }, { status, headers: { "cache-control": "no-store" } });
+}
+
+/** Browsers send Origin on POST; refuse requests another site started. */
+export function sameOrigin(req: Request): boolean {
+  const origin = req.headers.get("origin");
+  if (!origin) return true;
+  try {
+    const host = new URL(origin).host;
+    return host === new URL(req.url).host || host === req.headers.get("x-forwarded-host") || host === req.headers.get("host");
+  } catch {
+    return false;
+  }
+}
+
+/** Runs a route handler: refuses cross-site writes and maps errors to clean JSON. */
+export async function handle(req: Request, what: string, handler: () => Promise<Response>): Promise<Response> {
+  if (req.method !== "GET" && !sameOrigin(req)) return fail("Cross-site request refused.", 403);
+  try {
+    return await handler();
+  } catch (err) {
+    return fromError(err, what);
+  }
+}
+
+export function fromError(err: unknown, what: string): NextResponse {
+  if (err instanceof HttpError) return fail(err.message, err.status);
+  if (err instanceof AiError) return fail(err.message, err.status);
+  if (err instanceof z.ZodError) return fail(err.issues[0]?.message ?? "Invalid request.", 400);
+  console.error(`[api] ${what} failed:`, err instanceof Error ? err.message : err);
+  return fail(`The ${what} failed. Try again.`, 500);
+}
+
+export async function readJson(req: Request, maxBytes = 32_000): Promise<unknown> {
+  if (Number(req.headers.get("content-length") ?? 0) > maxBytes) throw new HttpError("Request is too large.", 413);
+  const text = await req.text();
+  if (text.length > maxBytes) throw new HttpError("Request is too large.", 413);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new HttpError("Request body is not JSON.", 400);
+  }
+}
+
+/** Reads the body and validates it; a bad body answers 400 with the first problem. */
+export async function readBody<T>(req: Request, schema: z.ZodType<T>, maxBytes?: number): Promise<T> {
+  const parsed = schema.safeParse(await readJson(req, maxBytes));
+  if (!parsed.success) throw new HttpError(parsed.error.issues[0]?.message ?? "Invalid request.", 400);
+  return parsed.data;
+}
+
+// Fixed-window limiter per client IP and route. In-memory: good for one
+// instance; the database limiter (lib/server/limits) is the shared one.
+const windows = new Map<string, { start: number; count: number }>();
+const WINDOW_MS = 60_000;
+const MAX_TRACKED = 10_000;
+
+/** Prefer the platform-set client IP (Vercel and most proxies set x-real-ip). */
+export function clientIp(req: Request): string {
+  return req.headers.get("x-real-ip")?.trim() || req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() || "local";
+}
+
+export function rateLimited(req: Request, route: string, perMinute: number): NextResponse | null {
+  const now = Date.now();
+  const k = `${route}:${clientIp(req)}`;
+  const w = windows.get(k);
+  if (!w || now - w.start > WINDOW_MS) {
+    windows.delete(k);
+    windows.set(k, { start: now, count: 1 });
+    // Map order is insertion order, so the first entries are the oldest windows.
+    for (const key of windows.keys()) {
+      if (windows.size <= MAX_TRACKED) break;
+      windows.delete(key);
+    }
+    return null;
+  }
+  if (w.count >= perMinute) return fail("Too many requests. Wait a minute and try again.", 429);
+  windows.set(k, { ...w, count: w.count + 1 });
+  return null;
+}

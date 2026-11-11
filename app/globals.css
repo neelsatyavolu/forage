@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+/* Ledger (~/DESIGN.md): warm off-black / paper, Newsreader for what people
+   read, Geist for controls, Geist Mono for every number and label, blue as
+   the only color. Rules over boxes, 4-6px radii, no shadows. Follows the
+   system theme; data-theme (set by the toggle) overrides it. */
+:root {
+  --canvas: #0e0e0d;
+  --card: #141413;
+  --hover: #1a1a18;
+  --deep: #090908;
+  --ink: #f2f0ea;
+  --body: rgba(242, 240, 234, 0.86);
+  --mute: rgba(242, 240, 234, 0.55);
+  --stone: rgba(242, 240, 234, 0.28);
+  --line: rgba(242, 240, 234, 0.08);
+  --line-2: rgba(242, 240, 234, 0.18);
+  --field: rgba(242, 240, 234, 0.42);
+  --primary: #f2f0ea;
+  --primary-on: #0e0e0d;
+  --primary-hover: #e4e1d9;
+  --accent: #4c8dff;
+  --accent-hover: #6fa3ff;
+  --accent-on: #0e0e0d;
+  --wash: rgba(76, 141, 255, 0.1);
+  --selection: rgba(76, 141, 255, 0.35);
+  --ok: #4fbf85;
+  --danger: #ee5a4b;
+  --warn: #d9a23a;
+  --scrim: rgba(9, 9, 8, 0.7);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --canvas: #f7f5ef;
+    --card: #fbfaf6;
+    --hover: #efece4;
+    --deep: #141413;
+    --ink: #16161a;
+    --body: rgba(22, 22, 26, 0.86);
+    --mute: rgba(22, 22, 26, 0.64);
+    --stone: rgba(22, 22, 26, 0.28);
+    --line: rgba(22, 22, 26, 0.1);
+    --line-2: rgba(22, 22, 26, 0.22);
+    --field: rgba(22, 22, 26, 0.5);
+    --primary: #16161a;
+    --primary-on: #f7f5ef;
+    --primary-hover: #2a2a2f;
+    --accent: #2a63cc;
+    --accent-hover: #1f4fa8;
+    --accent-on: #ffffff;
+    --wash: rgba(42, 99, 204, 0.09);
+    --selection: rgba(42, 99, 204, 0.25);
+    --ok: #1a7048;
+    --danger: #bc2e23;
+    --warn: #8a5e12;
+    --scrim: rgba(22, 22, 26, 0.4);
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="light"] {
+  --canvas: #f7f5ef;
+  --card: #fbfaf6;
+  --hover: #efece4;
+  --deep: #141413;
+  --ink: #16161a;
+  --body: rgba(22, 22, 26, 0.86);
+  --mute: rgba(22, 22, 26, 0.64);
+  --stone: rgba(22, 22, 26, 0.28);
+  --line: rgba(22, 22, 26, 0.1);
+  --line-2: rgba(22, 22, 26, 0.22);
+  --field: rgba(22, 22, 26, 0.5);
+  --primary: #16161a;
+  --primary-on: #f7f5ef;
+  --primary-hover: #2a2a2f;
+  --accent: #2a63cc;
+  --accent-hover: #1f4fa8;
+  --accent-on: #ffffff;
+  --wash: rgba(42, 99, 204, 0.09);
+  --selection: rgba(42, 99, 204, 0.25);
+  --ok: #1a7048;
+  --danger: #bc2e23;
+  --warn: #8a5e12;
+  --scrim: rgba(22, 22, 26, 0.4);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-card: var(--card);
+  --color-hover: var(--hover);
+  --color-deep: var(--deep);
+  --color-ink: var(--ink);
+  --color-body: var(--body);
+  --color-mute: var(--mute);
+  --color-stone: var(--stone);
+  --color-hairline: var(--line);
+  --color-hairline-strong: var(--line-2);
+  --color-field: var(--field);
+  --color-primary: var(--primary);
+  --color-primary-on: var(--primary-on);
+  --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-on: var(--accent-on);
+  --color-wash: var(--wash);
+  --color-ok: var(--ok);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-scrim: var(--scrim);
+  --font-serif: var(--font-newsreader), Georgia, serif;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+}
+
+html {
+  background: var(--canvas);
+  overflow-x: clip;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+/* Every number is mono and tabular. */
+.tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition:
+    color 150ms var(--ease),
+    background-color 150ms var(--ease),
+    border-color 150ms var(--ease);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 200ms var(--ease) both;
+}
+
+/* Loading placeholder: a flat block that breathes while a request runs. */
+@keyframes breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+.skeleton {
+  background: var(--hover);
+  animation: breathe 1.6s var(--ease) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .rise {
+    animation: none;
+  }
+  * {
+    transition: none !important;
+  }
+}
