@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeWeights, type HistoryItem } from "../taste/profile";
 import type { Place, Reaction, RecContext, Visit } from "../types";
 import { rankPlaces } from "./rank";
+import type { CrowdRating } from "./signals";
 
 // Offline eval: synthetic users with hidden tastes log visits in a synthetic
 // city. For each user, 20% of the places they loved are held out; the rest
@@ -32,20 +33,23 @@ const DISHES: Record<string, string[]> = {
 const CUISINES = Object.keys(DISHES);
 const VIBES = ["casual", "lively", "quiet", "upscale", "cozy", "scene"];
 
-function city(rand: () => number, n: number): Place[] {
+/** Places plus the live crowd rating the app would fetch for each (kept apart from the stored place, as in production). */
+function city(rand: () => number, n: number): { places: Place[]; ratings: Map<string, CrowdRating> } {
   const pick = <T,>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)];
-  return Array.from({ length: n }, (_, i) => {
+  const rows = Array.from({ length: n }, (_, i) => {
     const cuisine = pick(CUISINES);
     const angle = rand() * 2 * Math.PI;
     const km = Math.sqrt(rand()) * 3;
-    return {
+    const place = {
       id: `p${i}`, source: "osm", sourceId: `node/${i}`, googlePlaceId: null, name: `Place ${i}`,
       lat: CENTER.lat + (km / 111.32) * Math.sin(angle), lng: CENTER.lng + (km / 88) * Math.cos(angle),
       address: null, city: "Testville", country: "US", cuisine: [cuisine], priceLevel: 1 + Math.floor(rand() * 4),
-      tags: { dishes: [pick(DISHES[cuisine]), pick(DISHES[cuisine])], vibe: [pick(VIBES)], rating: 3.6 + rand() * 1.2, userRatingCount: Math.floor(rand() * 800) },
+      tags: { dishes: [pick(DISHES[cuisine]), pick(DISHES[cuisine])], vibe: [pick(VIBES)] },
       updatedAt: 0,
     } satisfies Place;
+    return { place, rating: { rating: 3.6 + rand() * 1.2, count: Math.floor(rand() * 800) } };
   });
+  return { places: rows.map((r) => r.place), ratings: new Map(rows.map((r) => [r.place.id, r.rating])) };
 }
 
 type Persona = { likes: string[]; dislikes: string[]; likedVibe: string; dislikedVibe: string };
@@ -58,7 +62,7 @@ function utility(p: Persona, place: Place, rand: () => number): number {
 
 function simulate(seed: number) {
   const rand = rng(seed);
-  const places = city(rand, 240);
+  const { places, ratings } = city(rand, 240);
   const shuffled = [...CUISINES].sort(() => rand() - 0.5);
   const persona: Persona = { likes: shuffled.slice(0, 3), dislikes: shuffled.slice(3, 5), likedVibe: VIBES[seed % 6], dislikedVibe: VIBES[(seed + 3) % 6] };
   const visited = [...places].sort(() => rand() - 0.5).slice(0, 60);
@@ -80,7 +84,7 @@ function simulate(seed: number) {
   });
   const training = history.filter((h) => !heldOut.has(h.place.id));
   const ctx: RecContext = { ...CENTER, radiusKm: 5, mode: "near" };
-  const ranked = rankPlaces({ candidates: places, history: training, weights: computeWeights(training, NOW), ctx, filter: "new", wanted: new Set(), calibration: 0 });
+  const ranked = rankPlaces({ candidates: places, history: training, weights: computeWeights(training, NOW), ctx, filter: "new", wanted: new Set(), calibration: 0, ratings });
   const positions = [...heldOut].map((id) => ranked.findIndex((r) => r.place.id === id));
   return { positions, candidates: ranked.length };
 }

@@ -125,7 +125,12 @@ const USER_TABLES = [
   )`,
 ];
 
-const STATEMENTS = [...ACCOUNT_TABLES, ...PLACE_TABLES, ...USER_TABLES];
+// The prediction before the user's calibration offset was added. Calibration
+// is fitted on actual minus this, so the offset doesn't feed back on itself.
+// Null on rows from before the column existed.
+const LATER = [`ALTER TABLE predictions ADD COLUMN IF NOT EXISTS raw_predicted double precision CHECK (raw_predicted BETWEEN 0 AND 10)`];
+
+const STATEMENTS = [...ACCOUNT_TABLES, ...PLACE_TABLES, ...USER_TABLES, ...LATER];
 
 export async function migrate(db: Queryable): Promise<void> {
   for (const sql of STATEMENTS) await db.query(sql);

@@ -45,10 +45,10 @@ describe("taste profile", () => {
 
 describe("predictions", () => {
   it("resolves the newest open prediction for a place", async () => {
-    await insertPrediction(db, USER_A, place.id, 7, 1);
-    const newer = await insertPrediction(db, USER_A, place.id, 8.4, 2);
+    await insertPrediction(db, USER_A, place.id, 7, 7, 1);
+    const newer = await insertPrediction(db, USER_A, place.id, 8.4, 9, 2);
     expect((await latestPrediction(db, USER_A, place.id))?.id).toBe(newer.id);
-    expect(await resolvePrediction(db, USER_A, place.id, 7.1)).toMatchObject({ id: newer.id, predicted: 8.4, actual: 7.1 });
+    expect(await resolvePrediction(db, USER_A, place.id, 7.1)).toMatchObject({ id: newer.id, predicted: 8.4, rawPredicted: 9, actual: 7.1 });
     expect(await listResolvedPredictions(db, USER_A)).toHaveLength(1);
     expect(await resolvePrediction(db, USER_B, place.id, 5)).toBeNull();
   });
@@ -68,7 +68,7 @@ describe("account deletion", () => {
   it("takes every user row with it", async () => {
     await addWant(db, USER_A, place.id, "manual", 1);
     await saveTasteWeights(db, USER_A, {}, 1);
-    await insertPrediction(db, USER_A, place.id, 5, 1);
+    await insertPrediction(db, USER_A, place.id, 5, 5, 1);
     await saveLodestarLink(db, USER_A, "v1.x", null, 1);
     await deleteUser(db, USER_A);
     for (const table of ["want_list", "taste_profiles", "predictions", "lodestar_links"]) {

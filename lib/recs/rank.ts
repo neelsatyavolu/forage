@@ -2,7 +2,7 @@ import { adjacent } from "../taste/families";
 import { placeValue, tasteSimilarity, visitScore, type HistoryItem } from "../taste/profile";
 import { placeTags, splitCuisine, valueOf } from "../taste/vocab";
 import type { Place, Rec, RecContext, TasteWeights } from "../types";
-import { MODE_MIX, combine, distanceScore, haversineKm, qualityPrior, specialness, type Signals } from "./signals";
+import { MODE_MIX, combine, distanceScore, haversineKm, qualityPrior, specialness, type CrowdRating, type Signals } from "./signals";
 
 // The fast ranking: pure, no I/O, so it is the same in the app, the tests and
 // the offline eval. AI reranking happens after this, on the top of the list.
@@ -19,6 +19,8 @@ export type RankInput = {
   wanted: ReadonlySet<string>;
   /** Added to predicted scores for places the user hasn't been to. */
   calibration: number;
+  /** Live crowd ratings by place id, for the places that have one this request. */
+  ratings?: ReadonlyMap<string, CrowdRating>;
 };
 
 const WANTED_BONUS = 0.05;
@@ -26,6 +28,8 @@ const OCCASION_BONUS = 0.05;
 /** A go-to needs at least this much liking (placeValue, -1..1). */
 const GOTO_MIN = 0.2;
 const RECENT_VISITS = 10;
+/** Splurge shows only special places (pricey or tagged for special nights) once there are at least this many. */
+const SPLURGE_MIN = 5;
 
 const round = (x: number, places: number) => Math.round(x * 10 ** places) / 10 ** places;
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
@@ -68,7 +72,7 @@ function signalsFor(c: Context, place: Place, item: HistoryItem | undefined, km:
   const adjacency = Math.max(0, ...cuisines.flatMap((x) => c.likedCuisines.filter(([liked]) => adjacent(x, liked)).map(([, w]) => w)));
   return {
     taste,
-    quality: qualityPrior(place.tags) ?? 0.5,
+    quality: qualityPrior(c.ratings?.get(place.id)) ?? 0.5,
     distance: distanceScore(km, radiusKm),
     novelty: item ? 0 : 1 - 0.5 * overlap,
     special: specialness(place),
@@ -81,7 +85,7 @@ function toRec(c: Context, place: Place, item: HistoryItem | undefined, km: numb
   const occasions = (place.tags as Record<string, unknown>).occasions;
   const bonus =
     (c.wanted.has(place.id) ? WANTED_BONUS : 0) + (c.ctx.occasion && Array.isArray(occasions) && occasions.includes(c.ctx.occasion) ? OCCASION_BONUS : 0);
-  const quality = qualityPrior(place.tags);
+  const quality = qualityPrior(c.ratings?.get(place.id));
   const score = item?.visits[0] ? round(visitScore(item.visits[0], item.scores), 1) : predictScore(s.taste, quality, c.calibration);
   const rec: Rec = {
     place,
@@ -89,6 +93,17 @@ function toRec(c: Context, place: Place, item: HistoryItem | undefined, km: numb
     signals: { taste: round(s.taste, 3), quality: quality === null ? null : round(quality, 3), distanceKm: round(km, 2), novelty: round(s.novelty, 3), visited: !!item, wanted: c.wanted.has(place.id) },
   };
   return { rec, rank: combine(s, MODE_MIX[c.ctx.mode]) + bonus };
+}
+
+/**
+ * Splurge drops everyday places. Where the data marks too few places as
+ * special (OSM rarely has price), it keeps everything rather than show almost
+ * nothing; special places still rank higher through the mode's mix.
+ */
+function splurgeOnly<T extends { rec: Rec }>(mode: RecContext["mode"], ranked: T[]): T[] {
+  if (mode !== "splurge") return ranked;
+  const special = ranked.filter((r) => specialness(r.rec.place) > 0);
+  return special.length >= SPLURGE_MIN ? special : ranked;
 }
 
 /** Candidates ranked best first for the context, after the mode's and filter's exclusions. */
@@ -105,5 +120,5 @@ export function rankPlaces(input: RankInput): Rec[] {
     if (!keep(c, place, item)) continue;
     ranked.push(toRec(c, place, item, km));
   }
-  return ranked.sort((a, b) => b.rank - a.rank || a.rec.signals.distanceKm - b.rec.signals.distanceKm).map((r) => r.rec);
+  return splurgeOnly(input.ctx.mode, ranked).sort((a, b) => b.rank - a.rank || a.rec.signals.distanceKm - b.rec.signals.distanceKm).map((r) => r.rec);
 }

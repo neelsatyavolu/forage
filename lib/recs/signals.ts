@@ -14,19 +14,17 @@ export function haversineKm(a: LatLng, b: LatLng): number {
 const PRIOR_RATING = 4.0;
 const PRIOR_REVIEWS = 50;
 
-const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+/** A live crowd rating (1-5) fetched for this request. Never stored (Google's terms). */
+export type CrowdRating = { rating: number; count: number | null };
 
 /**
- * Crowd quality from a live rating (1-5) when a source attached one to the
- * place's tags, pulled toward 4.0 when there are few reviews, then mapped so
- * 3.0 -> 0 and 5.0 -> 1. Null when there is no rating.
+ * Crowd quality from a live rating, pulled toward 4.0 when there are few
+ * reviews, then mapped so 3.0 -> 0 and 5.0 -> 1. Null when there is no rating.
  */
-export function qualityPrior(tags: Place["tags"]): number | null {
-  const t = tags as Record<string, unknown>;
-  const rating = num(t.rating);
-  if (rating === null || rating < 1 || rating > 5) return null;
-  const count = Math.max(0, num(t.userRatingCount) ?? num(t.ratingCount) ?? num(t.reviewCount) ?? 0);
-  const adjusted = (PRIOR_RATING * PRIOR_REVIEWS + rating * count) / (PRIOR_REVIEWS + count);
+export function qualityPrior(r: CrowdRating | undefined): number | null {
+  if (!r || !Number.isFinite(r.rating) || r.rating < 1 || r.rating > 5) return null;
+  const count = Math.max(0, r.count ?? 0);
+  const adjusted = (PRIOR_RATING * PRIOR_REVIEWS + r.rating * count) / (PRIOR_REVIEWS + count);
   return Math.max(0, Math.min(1, (adjusted - 3) / 2));
 }
 

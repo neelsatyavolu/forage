@@ -9,14 +9,15 @@ const rowToPrediction = (r: Row): Prediction => ({
   userId: r.user_id as string,
   placeId: r.place_id as string,
   predicted: Number(r.predicted),
+  rawPredicted: r.raw_predicted === null || r.raw_predicted === undefined ? Number(r.predicted) : Number(r.raw_predicted),
   actual: r.actual === null || r.actual === undefined ? null : Number(r.actual),
   createdAt: fromTs(r.created_at),
 });
 
-export async function insertPrediction(q: Queryable, userId: string, placeId: string, predicted: number, now: number): Promise<Prediction> {
+export async function insertPrediction(q: Queryable, userId: string, placeId: string, predicted: number, rawPredicted: number, now: number): Promise<Prediction> {
   const [row] = await q.query(
-    "INSERT INTO predictions (user_id, place_id, predicted, created_at) VALUES ($1, $2, $3, $4) RETURNING *",
-    [userId, placeId, predicted, toTs(now)],
+    "INSERT INTO predictions (user_id, place_id, predicted, raw_predicted, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+    [userId, placeId, predicted, rawPredicted, toTs(now)],
   );
   return rowToPrediction(row);
 }

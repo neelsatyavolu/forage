@@ -66,3 +66,37 @@ export async function liveDetails(q: Queryable, place: Place, google: GoogleClie
   }
   return google.details(googleId);
 }
+
+/** Resolves to null on error or when the budget runs out, so one slow call can't hold up the rest. */
+async function within<T>(work: Promise<T>, budgetMs: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), budgetMs);
+  });
+  try {
+    return await Promise.race([work.catch(() => null), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Live crowd ratings for places, fetched in parallel within a time budget, by
+ * place id. Places with no Google match, no rating, an error or a slow answer
+ * are left out. The ratings are used for this request only and never stored.
+ */
+export async function liveRatings(
+  q: Queryable,
+  places: readonly Place[],
+  google: GoogleClient,
+  now: number,
+  budgetMs: number,
+): Promise<Map<string, { rating: number; count: number | null }>> {
+  const details = await Promise.all(places.map((p) => within(liveDetails(q, p, google, now), budgetMs)));
+  return new Map(
+    places.flatMap((p, i) => {
+      const d = details[i];
+      return d && d.rating !== null ? [[p.id, { rating: d.rating, count: d.ratingCount }] as const] : [];
+    }),
+  );
+}

@@ -43,6 +43,36 @@ describe("recommendWith", () => {
     expect((await latestPrediction(db, USER_A, noodle2.id))?.predicted).toBe(recs[0].score);
   });
 
+  it("stores the uncalibrated prediction beside the calibrated one shown", async () => {
+    const { db, deps, cafe } = await world();
+    // Six resolved misses of -3 give a calibration of -2 (clamped).
+    for (let i = 0; i < 6; i++) {
+      await db.query("INSERT INTO predictions (user_id, place_id, predicted, raw_predicted, actual, created_at) VALUES ($1, $2, 8, 8, 5, '2026-10-01T00:00:00Z')", [USER_A, cafe.id]);
+    }
+    const recs = await recommendWith(deps(), USER_A, CTX);
+    const stored = await latestPrediction(db, USER_A, recs[0].place.id);
+    expect(stored?.predicted).toBe(recs[0].score);
+    expect(stored?.rawPredicted).toBeCloseTo(recs[0].score + 2, 1);
+  });
+
+  it("ranks again with live crowd ratings for the top new places, and survives a ratings failure", async () => {
+    const { deps, noodle2, grill } = await world();
+    const d = deps();
+    d.ratings = vi.fn(async (places: readonly Place[]) => new Map(places.map((p) => [p.id, { rating: p.id === grill.id ? 5 : 3, count: 5000 }])));
+    const recs = await recommendWith(d, USER_A, { ...CTX, mode: "travel" });
+    expect(d.ratings).toHaveBeenCalledOnce();
+    expect(recs.find((r) => r.place.id === grill.id)?.signals.quality).toBeCloseTo(1, 1);
+    expect(recs.find((r) => r.place.id === noodle2.id)?.signals.quality).toBeCloseTo(0, 1);
+
+    d.ratings = async () => {
+      throw new Error("quota");
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const plain = await recommendWith(d, USER_A, CTX);
+    expect(plain[0].place.id).toBe(noodle2.id);
+    expect(plain.every((r) => r.signals.quality === null)).toBe(true);
+  });
+
   it("Go-to returns places you've been, even when the source didn't list them", async () => {
     const { deps, mian } = await world();
     const d = deps();

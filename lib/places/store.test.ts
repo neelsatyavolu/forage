@@ -5,7 +5,7 @@ import { byDistance, distanceKm } from "./geo";
 import type { GoogleClient } from "./google";
 import { mergeInput } from "./merge";
 import { PlacesError } from "./errors";
-import { liveDetails, nearbyStored, saveFetched, searchStored } from "./store";
+import { liveDetails, liveRatings, nearbyStored, saveFetched, searchStored } from "./store";
 
 const SF = { lat: 37.77, lng: -122.42 };
 
@@ -85,5 +85,28 @@ describe("liveDetails", () => {
     const google = { locate: async () => ({ placeId: "gid", location: { lat: 38, lng: -122.42 } }), details: vi.fn() } as unknown as GoogleClient;
     expect(await liveDetails(db, place, google, 2)).toBeNull();
     expect((await getPlace(db, place.id))?.googlePlaceId).toBeNull();
+  });
+});
+
+describe("liveRatings", () => {
+  const base = { priceLevel: null, phone: null, website: null, mapsUrl: null, openNow: null, hours: [], summary: null };
+
+  it("returns ratings by place id, never stores them, and skips failures, misses and slow calls", async () => {
+    const db = await freshDb();
+    const rated = await addPlace(db, { sourceId: "node/1", googlePlaceId: "g1" });
+    const unrated = await addPlace(db, { sourceId: "node/2", googlePlaceId: "g2" });
+    const failing = await addPlace(db, { sourceId: "node/3", googlePlaceId: "g3" });
+    const slow = await addPlace(db, { sourceId: "node/4", googlePlaceId: "g4" });
+    const google = {
+      locate: vi.fn(),
+      details: vi.fn(async (id: string) => {
+        if (id === "g3") throw new Error("down");
+        if (id === "g4") await new Promise((r) => setTimeout(r, 200));
+        return { ...base, rating: id === "g2" ? null : 4.6, ratingCount: id === "g2" ? null : 812 };
+      }),
+    } as unknown as GoogleClient;
+    const ratings = await liveRatings(db, [rated, unrated, failing, slow], google, 2, 50);
+    expect([...ratings]).toEqual([[rated.id, { rating: 4.6, count: 812 }]]);
+    expect((await getPlace(db, rated.id))?.tags).not.toHaveProperty("rating");
   });
 });

@@ -5,7 +5,7 @@ import { env } from "../server/env";
 import type { LatLng, Place } from "../types";
 import { googleClient, type LiveDetails } from "./google";
 import { overpassNearby, photonSearch } from "./osm";
-import { liveDetails, nearbyStored, searchStored } from "./store";
+import { liveDetails, liveRatings, nearbyStored, searchStored } from "./store";
 
 // Place lookup, owned by the places track. Both functions return places that
 // are already stored (upserted into `places` via lib/db/places), so every
@@ -26,6 +26,16 @@ export async function searchPlaces(q: string, near?: LatLng): Promise<Place[]> {
 /** Restaurants, cafes and bars within radiusKm of a point, nearest first. */
 export async function nearbyPlaces(lat: number, lng: number, radiusKm: number): Promise<Place[]> {
   return nearbyStored(await getDb(), { lat, lng }, radiusKm, () => overpassNearby(lat, lng, radiusKm), Date.now());
+}
+
+/** How long recs wait for live ratings before ranking without the slow ones. */
+const RATINGS_BUDGET_MS = 2500;
+
+/** Live Google ratings for places, by place id, for ranking only (never stored). Empty without a key. */
+export async function placeRatings(places: readonly Place[]): Promise<Map<string, { rating: number; count: number | null }>> {
+  const key = env().GOOGLE_PLACES_KEY;
+  if (!key || places.length === 0) return new Map();
+  return liveRatings(await getDb(), places, googleClient(key), Date.now(), RATINGS_BUDGET_MS);
 }
 
 /** Live Google details for a stored place, or null without a key or a match. */

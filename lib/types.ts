@@ -99,7 +99,8 @@ export const TasteProfileSchema = z.object({
 });
 export type TasteProfile = z.infer<typeof TasteProfileSchema>;
 
-export type Prediction = { id: number; userId: string; placeId: string; predicted: number; actual: number | null; createdAt: number };
+/** predicted is what the user was shown; rawPredicted is the same before the calibration offset. */
+export type Prediction = { id: number; userId: string; placeId: string; predicted: number; rawPredicted: number; actual: number | null; createdAt: number };
 
 export type LodestarLink = { userId: string; sealedTokens: string; lodestarUserLabel: string | null; createdAt: number };
 

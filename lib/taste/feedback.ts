@@ -7,7 +7,9 @@ import { visitScore } from "./profile";
 // "We predicted 8.4, you gave 7.1." When recs are shown, the predicted score
 // of each is stored. When the user later logs a visit to one of those places,
 // the prediction is resolved with the score they gave. The average miss
-// becomes a per-user calibration offset added to future predictions.
+// becomes a per-user calibration offset added to future predictions. The miss
+// is measured against the uncalibrated prediction, so once the offset fixes a
+// bias it keeps fixing it instead of decaying back to 0.
 
 const DAY_MS = 86_400_000;
 /** A place shown again within this window keeps its first open prediction. */
@@ -17,9 +19,9 @@ const PRIOR = 3;
 const MAX_OFFSET = 2;
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
-/** Mean (actual - predicted), shrunk toward 0 for small samples and clamped to ±2. */
-export function calibrationOffset(resolved: readonly Pick<Prediction, "predicted" | "actual">[]): number {
-  const misses = resolved.filter((p) => p.actual !== null).map((p) => (p.actual as number) - p.predicted);
+/** Mean (actual - rawPredicted), shrunk toward 0 for small samples and clamped to ±2. */
+export function calibrationOffset(resolved: readonly Pick<Prediction, "rawPredicted" | "actual">[]): number {
+  const misses = resolved.filter((p) => p.actual !== null).map((p) => (p.actual as number) - p.rawPredicted);
   const offset = misses.reduce((s, m) => s + m, 0) / (misses.length + PRIOR);
   return round1(Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, offset)));
 }
@@ -28,13 +30,17 @@ export async function userCalibration(q: Queryable, userId: string): Promise<num
   return calibrationOffset(await listResolvedPredictions(q, userId, 50));
 }
 
+export type Shown = { placeId: string; /** As shown, calibrated. */ score: number; /** Before calibration. */ raw: number };
+
+const clamp10 = (x: number) => round1(Math.max(0, Math.min(10, x)));
+
 /** Stores predictions for recs the user was shown, skipping places with a recent open one. */
-export async function recordShown(q: Queryable, userId: string, shown: readonly { placeId: string; score: number }[], now: number): Promise<number> {
+export async function recordShown(q: Queryable, userId: string, shown: readonly Shown[], now: number): Promise<number> {
   let stored = 0;
   for (const s of shown) {
     const last = await latestPrediction(q, userId, s.placeId);
     if (last && last.actual === null && now - last.createdAt < REPEAT_WINDOW_MS) continue;
-    await insertPrediction(q, userId, s.placeId, round1(Math.max(0, Math.min(10, s.score))), now);
+    await insertPrediction(q, userId, s.placeId, clamp10(s.score), clamp10(s.raw), now);
     stored += 1;
   }
   return stored;
@@ -45,6 +51,9 @@ type OpenRow = { id: string | number; place_id: string; created_at: unknown; rea
 /**
  * Resolves every open prediction whose place the user has since logged: the
  * first visit on or after the day of the prediction gives the actual score.
+ * Visits carry the user's local date and predictions a UTC time, so a visit
+ * dated the day before the prediction's UTC date also counts (dinner the same
+ * evening in the Americas is already the next day in UTC).
  * Returns how many were resolved.
  */
 export async function syncFeedback(q: Queryable, userId: string): Promise<number> {
@@ -53,7 +62,7 @@ export async function syncFeedback(q: Queryable, userId: string): Promise<number
      FROM predictions p
      JOIN LATERAL (
        SELECT reaction, occasion FROM visits
-       WHERE user_id = p.user_id AND place_id = p.place_id AND visited_on >= (p.created_at AT TIME ZONE 'UTC')::date
+       WHERE user_id = p.user_id AND place_id = p.place_id AND visited_on >= (p.created_at AT TIME ZONE 'UTC')::date - 1
        ORDER BY visited_on, created_at LIMIT 1
      ) v ON true
      LEFT JOIN place_scores s ON s.user_id = p.user_id AND s.place_id = p.place_id AND s.occasion = v.occasion

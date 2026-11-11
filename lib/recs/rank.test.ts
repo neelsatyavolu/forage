@@ -36,14 +36,20 @@ describe("signals", () => {
     expect(distanceScore(3, 3)).toBeLessThan(0.1);
   });
   it("pulls ratings with few reviews toward the prior", () => {
-    expect(qualityPrior({})).toBeNull();
-    expect(qualityPrior({ rating: 9 })).toBeNull();
-    expect(qualityPrior({ rating: 5, userRatingCount: 2 })).toBeLessThan(qualityPrior({ rating: 5, userRatingCount: 2000 }) as number);
-    expect(qualityPrior({ rating: 5, userRatingCount: 1e6 })).toBeCloseTo(1, 2);
+    expect(qualityPrior(undefined)).toBeNull();
+    expect(qualityPrior({ rating: 9, count: 10 })).toBeNull();
+    expect(qualityPrior({ rating: 5, count: 2 })).toBeLessThan(qualityPrior({ rating: 5, count: 2000 }) as number);
+    expect(qualityPrior({ rating: 5, count: 1e6 })).toBeCloseTo(1, 2);
+    expect(qualityPrior({ rating: 5, count: null })).toBe(0.5);
   });
   it("scores special places", () => {
     expect(specialness({ priceLevel: 1, tags: {} })).toBe(0);
     expect(specialness({ priceLevel: 4, tags: { occasions: ["special"] } })).toBe(1);
+  });
+  it("ignores rating-like keys in stored tags; only live ratings count", () => {
+    const tagged = place("tagged", ["mexican"], 0.5, { tags: { rating: 4.9, userRatingCount: 3000 } });
+    expect(rankPlaces(input({ candidates: [tagged] }))[0].signals.quality).toBeNull();
+    expect(rankPlaces(input({ candidates: [tagged], ratings: new Map([["tagged", { rating: 4.9, count: 3000 }]]) }))[0].signals.quality).toBeGreaterThan(0.9);
   });
   it("predicts a score with calibration and clamps it", () => {
     expect(predictScore(0.5, null, 0)).toBe(5.5);
@@ -83,13 +89,23 @@ describe("rankPlaces", () => {
   });
 
   it("Travel weighs crowd rating more than Near me does", () => {
-    const liked = place("liked", ["ramen"], 0.5, { tags: { rating: 3.6, userRatingCount: 900 } });
-    const acclaimed = place("acclaimed", ["mexican"], 0.5, { tags: { rating: 4.9, userRatingCount: 3000 } });
-    const both = { candidates: [liked, acclaimed] };
+    const liked = place("liked", ["ramen"], 0.5);
+    const acclaimed = place("acclaimed", ["mexican"], 0.5);
+    const ratings = new Map([["liked", { rating: 3.6, count: 900 }], ["acclaimed", { rating: 4.9, count: 3000 }]]);
+    const both = { candidates: [liked, acclaimed], ratings };
     const nearGap = rankPlaces(input(both)).map((r) => r.place.id);
     const travel = rankPlaces(input({ ...both, ctx: { mode: "travel" } })).map((r) => r.place.id);
     expect(nearGap[0]).toBe("liked");
     expect(travel[0]).toBe("acclaimed");
+  });
+
+  it("Splurge keeps only special places when there are enough of them", () => {
+    const cheap = place("cheap", ["mexican"], 0.2, { priceLevel: 1 });
+    const fancy = [1, 2, 3, 4, 5].map((i) => place(`fancy${i}`, ["mexican"], 1, { priceLevel: i % 2 ? 4 : null, tags: i % 2 ? {} : { occasions: ["night_out"] } }));
+    const splurge = ids(input({ candidates: [cheap, ...fancy], ctx: { mode: "splurge" } }));
+    expect(splurge).toHaveLength(5);
+    expect(splurge).not.toContain("cheap");
+    expect(ids(input({ candidates: [cheap, ...fancy] }))).toContain("cheap");
   });
 
   it("Splurge lifts expensive special places and ignores price dislikes", () => {

@@ -7,8 +7,9 @@ import { recordShown, syncFeedback, userCalibration } from "../taste/feedback";
 import { refreshWeights } from "../taste/refresh";
 import { plainSummary } from "../taste/summary";
 import type { Place, Rec, RecContext, RecMode } from "../types";
-import { rankPlaces, type RecFilter } from "./rank";
+import { predictScore, rankPlaces, type RecFilter } from "./rank";
 import { RERANK_POOL, rerank } from "./rerank";
+import type { CrowdRating } from "./signals";
 
 // recommend() with its I/O passed in, so tests can run it on PGlite with a
 // fake place source and a fake AI.
@@ -19,6 +20,8 @@ export type RecDeps = {
   /** The user's connected AI, or null when none is connected. */
   ai: AskAi | null;
   now: number;
+  /** Live crowd ratings for some places (not stored), or absent when no rating source is set up. */
+  ratings?: (places: readonly Place[]) => Promise<ReadonlyMap<string, CrowdRating>>;
 };
 
 export type RecOptions = {
@@ -36,11 +39,15 @@ const DEFAULT_FILTER: Record<RecMode, RecFilter> = { near: "new", travel: "all",
 
 /** Predictions are stored for the first few new places shown, for "we predicted X, you gave Y". */
 const RECORDED = 10;
+/** How many of the top new places get a live crowd rating before the final ranking. */
+const RATED = 12;
 
 export async function recommendWith(deps: RecDeps, userId: string, ctx: RecContext, opts: RecOptions = {}): Promise<Rec[]> {
   const recs = await rankAndRerank(deps, userId, ctx, opts);
   const fresh = recs.filter((r) => !r.signals.visited).slice(0, RECORDED);
-  await recordShown(deps.db, userId, fresh.map((r) => ({ placeId: r.place.id, score: r.score })), deps.now);
+  // The raw (uncalibrated) prediction is stored too: calibration is fitted on it.
+  const shown = fresh.map((r) => ({ placeId: r.place.id, score: r.score, raw: predictScore(r.signals.taste, r.signals.quality, 0) }));
+  await recordShown(deps.db, userId, shown, deps.now);
   return recs;
 }
 
@@ -56,7 +63,7 @@ async function rankAndRerank(deps: RecDeps, userId: string, ctx: RecContext, opt
     deps.nearby(ctx.lat, ctx.lng, ctx.radiusKm),
   ]);
 
-  const ranked = rankPlaces({
+  const input = {
     // The user's own places join the candidates so Go-to works even where the place source missed them.
     candidates: [...nearby, ...history.map((h) => h.place)],
     history,
@@ -65,7 +72,11 @@ async function rankAndRerank(deps: RecDeps, userId: string, ctx: RecContext, opt
     filter: opts.filter ?? DEFAULT_FILTER[ctx.mode],
     wanted: new Set(want.map((w) => w.placeId)),
     calibration,
-  });
+  };
+  const first = rankPlaces(input);
+  // Crowd ratings are fetched live for the top new places, then the list is ranked again with them.
+  const ratings = await fetchRatings(deps, first);
+  const ranked = ratings.size ? rankPlaces({ ...input, ratings }) : first;
   const limit = opts.limit ?? 30;
   if (!ai || ranked.length === 0) return ranked.slice(0, limit);
 
@@ -80,5 +91,17 @@ async function rankAndRerank(deps: RecDeps, userId: string, ctx: RecContext, opt
     if (opts.requireAi) throw err;
     console.error("[recs] rerank failed, using the fast ranking:", err instanceof Error ? err.message : err);
     return ranked.slice(0, limit);
+  }
+}
+
+async function fetchRatings(deps: RecDeps, ranked: readonly Rec[]): Promise<ReadonlyMap<string, CrowdRating>> {
+  if (!deps.ratings) return new Map();
+  const top = ranked.filter((r) => !r.signals.visited).slice(0, RATED).map((r) => r.place);
+  if (top.length === 0) return new Map();
+  try {
+    return await deps.ratings(top);
+  } catch (err) {
+    console.error("[recs] crowd ratings failed, ranking without them:", err instanceof Error ? err.message : err);
+    return new Map();
   }
 }
