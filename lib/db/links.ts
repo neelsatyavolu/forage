@@ -30,3 +30,9 @@ export async function saveLodestarLink(q: Queryable, userId: string, sealedToken
 export async function deleteLodestarLink(q: Queryable, userId: string): Promise<boolean> {
   return (await q.query("DELETE FROM lodestar_links WHERE user_id = $1 RETURNING user_id", [userId])).length === 1;
 }
+
+/** The link's sealed tokens, row-locked until the transaction `q` ends, so two refreshes can't both spend one refresh token. */
+export async function lockLodestarLink(q: Queryable, userId: string): Promise<string | null> {
+  const [row] = await q.query("SELECT sealed_tokens FROM lodestar_links WHERE user_id = $1 FOR UPDATE", [userId]);
+  return row ? (row.sealed_tokens as string) : null;
+}

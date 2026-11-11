@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { EmptyState, Page } from "@/components/ui";
+import { ExplorePanel } from "@/components/explore/explore-panel";
+import { Page } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Explore" };
 
 export default function ExplorePage() {
   return (
-    <Page title="Explore" lede="Pick a city or neighborhood and a mode: travel, splurge or stretch.">
-      <EmptyState>Explore will show here.</EmptyState>
+    <Page title="Explore" lede="Pick a city, a neighborhood or one of your Lodestar trips, then a mode.">
+      <ExplorePanel />
     </Page>
   );
 }

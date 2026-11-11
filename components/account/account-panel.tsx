@@ -1,5 +1,6 @@
 "use client";
 
+import { LodestarSection } from "@/app/account/lodestar/lodestar-section";
 import { AiSection } from "./ai-section";
 import { AuthForm } from "./auth-form";
 import { DeleteSection, SessionSection } from "./danger-section";
@@ -25,6 +26,7 @@ export function AccountPanel() {
         <p className="text-[15px] text-ink">{state.user.email}</p>
       </SectionRule>
       <AiSection />
+      <LodestarSection />
       <SessionSection onSignedOut={refresh} />
       <DeleteSection onDeleted={refresh} />
     </>
