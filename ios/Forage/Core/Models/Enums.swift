@@ -55,6 +55,8 @@ enum WantSource: String, LenientEnum {
     case ask
     case imported = "import"
     case lodestar
+    /// Want to try from the rating deck.
+    case rate
     case unknown
 
     static let unknownCase = WantSource.unknown

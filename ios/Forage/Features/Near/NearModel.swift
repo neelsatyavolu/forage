@@ -47,6 +47,9 @@ final class NearModel {
         NearRequest(lat: spot.lat, lng: spot.lng, radiusKm: radiusKm, filter: filter == .unknown ? .new : filter)
     }
 
+    /// Under `RateProgress.firstPicksAt` rated places: no picks are asked for.
+    nonisolated static let lockedText = "Rate 5 places to get picks."
+
     /// The web's empty text per filter.
     nonisolated static func emptyText(_ filter: NearFilter) -> String {
         switch filter {

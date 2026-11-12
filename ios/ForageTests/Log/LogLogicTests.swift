@@ -83,19 +83,4 @@ struct LogLogicTests {
         let json = try jsonObject(kept)
         #expect((json["comparison"] as? [String: Any])?["occasion"] as? String == "special")
     }
-
-    @Test func quickStartLogsLovedToday() {
-        let input = QuickStartAdded.input(placeId: "p", occasion: .special, today: date("2026-11-11"))
-        #expect(input.reaction == .loved)
-        #expect(input.occasion == .special)
-        #expect(input.visitedOn == date("2026-11-11"))
-        #expect(input.dishes.isEmpty && input.note == nil)
-    }
-
-    @Test func quickStartTracksPlacePerOccasion() throws {
-        let place = try decodeEnvelope(Fixture.place(), as: Place.self)
-        let added = [QuickStartAdded(place: place, occasion: .casual)]
-        #expect(QuickStartAdded.contains(added, placeId: place.id, occasion: .casual))
-        #expect(!QuickStartAdded.contains(added, placeId: place.id, occasion: .special))
-    }
 }

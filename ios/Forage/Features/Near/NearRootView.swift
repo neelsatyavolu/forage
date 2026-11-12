@@ -8,9 +8,15 @@ struct NearRootView: View {
 
     var body: some View {
         NavigationStack {
-            TabScreen(title: "Near me", lede: "Picks around you, based on where you've eaten.",
-                      signedOutMessage: "Sign in to get picks based on the places you have eaten.") {
-                NearContent(app: app)
+            TabScreen(title: "Near me", lede: "Picks around you, based on where you've eaten.") {
+                if app.isSignedIn {
+                    NearContent(app: app)
+                } else {
+                    VStack(alignment: .leading, spacing: Spacing.xl) {
+                        RatePromptCard(progress: .zero)
+                        Text(NearModel.lockedText).textStyle(.lede).foregroundStyle(Color.bodyText)
+                    }
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
@@ -33,17 +39,30 @@ private struct NearContent: View {
 
     var body: some View {
         @Bindable var model = model
+        let progress = app.rateProgress
         VStack(alignment: .leading, spacing: Spacing.xxxl) {
+            if progress.belowGoal { RatePromptCard(progress: progress) }
             SpotBar(spotModel: spot, search: search)
-            SectionRule(label: "Picks", meta: model.meta) {
+            SectionRule(label: "Picks", meta: progress.picksUnlocked ? model.meta : nil) {
                 VStack(alignment: .leading, spacing: Spacing.xl) {
-                    SegmentedChoice(options: NearModel.filters, selection: $model.filter) { $0.label }
-                    picks
+                    if progress.picksUnlocked {
+                        SegmentedChoice(options: NearModel.filters, selection: $model.filter) { $0.label }
+                        picks
+                    } else {
+                        Text(NearModel.lockedText).textStyle(.lede).foregroundStyle(Color.bodyText)
+                    }
+                    if !progress.belowGoal {
+                        Button("Rate places") { app.openRateFlow() }.buttonStyle(.forage(.ghost, small: true))
+                    }
                 }
             }
         }
         .task { await spot.start() }
-        .task(id: model.key(spot: spot.spot)) { await model.load(model.key(spot: spot.spot), revision: app.listsRevision) }
+        .task(id: progress.picksUnlocked ? model.key(spot: spot.spot) : nil) {
+            // Under 5 rated there are no picks to ask for.
+            guard progress.picksUnlocked else { return }
+            await model.load(model.key(spot: spot.spot), revision: app.listsRevision)
+        }
         .onAppear { model.reloadIfStale(revision: app.listsRevision) }
     }
 

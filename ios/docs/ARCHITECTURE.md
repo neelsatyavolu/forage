@@ -87,7 +87,9 @@ ios/
       Lists/     Been (web's beenRows port) and Want to try, occasion filter, Apple Maps view
       Ask/       Ask tab; shows Connect ChatGPT or Grok when no AI is connected
       Place/     PlaceDetailView sheet: scores, visits, feedback, map, Directions, live details
-      Log/       LogVisitSheet (search, form, comparisons), PlaceSearchView, QuickStartSheet
+      Log/       LogVisitSheet (search, form, comparisons), PlaceSearchView
+      Rate/      RateFlowView cover (spec 2026-11-11-rate-nearby): RateFlow (pure state machine and undo stack),
+                 RateModel (calls, guest start via AppState.ensureSession), grid, rate card, compare, finish, save panel
       Lodestar/  Account > Lodestar section; native connect flow (off) and in-app web fallback
       Account/   root, sections, sign in/up, forgot, reset, delete (no Taste section yet)
       AI/        done: AIConnectSheet, AIConnectLogic, AISignInBrowser (copied from Lodestar)

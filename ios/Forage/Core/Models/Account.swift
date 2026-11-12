@@ -1,14 +1,37 @@
 import Foundation
 
-/// `data` of `GET /api/account`. Signed out (or a revoked cookie) is `user == nil`.
+/// `data` of `GET /api/account`. Signed out (or a revoked cookie) is `user == nil`;
+/// `progress` comes with a user.
 struct AccountState: Codable, Hashable, Sendable {
     let user: AccountUser?
+    var progress: RateProgress?
 }
 
+/// A signed-in account, or a guest (api.md §2.0): a real user with no email yet.
 struct AccountUser: Codable, Hashable, Sendable {
-    let email: String
+    /// nil only for a guest.
+    let email: String?
     /// Missing on login/register answers; present on `GET /api/account`.
     let createdAt: EpochMillis?
+    let guest: Bool
+
+    init(email: String?, createdAt: EpochMillis?, guest: Bool = false) {
+        self.email = email
+        self.createdAt = createdAt
+        self.guest = guest
+    }
+
+    private enum CodingKeys: String, CodingKey { case email, createdAt, guest }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        email = try c.decodeIfPresent(String.self, forKey: .email)
+        createdAt = try c.decodeIfPresent(EpochMillis.self, forKey: .createdAt)
+        guest = try c.decodeIfPresent(Bool.self, forKey: .guest) ?? (email == nil)
+    }
+
+    /// Whose lists are on screen: the email, or one key for this device's guest.
+    var ownerKey: String { email ?? "guest" }
 }
 
 /// `data` of login and register.

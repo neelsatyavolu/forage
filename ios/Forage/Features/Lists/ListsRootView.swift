@@ -5,20 +5,20 @@ import SwiftUI
 struct ListsRootView: View {
     @Environment(AppState.self) private var app
     @State private var model = ListsModel()
-    @State private var showQuickStart = false
 
     var body: some View {
         NavigationStack {
-            TabScreen(title: "Lists", signedOutMessage: "Sign in to see the places you've been and want to try.") {
-                content
+            TabScreen(title: "Lists") {
+                if app.isSignedIn {
+                    content
+                } else {
+                    RatePromptCard(progress: .zero)
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
-        .task(id: ReloadKey(account: app.account?.email, revision: app.listsRevision)) {
+        .task(id: ReloadKey(account: app.account?.ownerKey, revision: app.listsRevision)) {
             await model.load(app)
-        }
-        .sheet(isPresented: $showQuickStart) {
-            QuickStartSheet().presentationBackground(Color.card)
         }
     }
 
@@ -54,9 +54,9 @@ struct ListsRootView: View {
 
     private var actions: some View {
         HStack(spacing: Spacing.sm) {
-            Button("Log a visit") { app.present(.logVisit(placeId: nil)) }
+            Button("Rate places") { app.openRateFlow() }
                 .buttonStyle(.forage(.accent))
-            Button("Quick start") { showQuickStart = true }
+            Button("Log a visit") { app.present(.logVisit(placeId: nil)) }
                 .buttonStyle(.forage(.ghost))
             Spacer(minLength: 0)
             displayToggle
@@ -74,8 +74,7 @@ struct ListsRootView: View {
     @ViewBuilder private func listBody(for data: ListsData) -> some View {
         if model.tab == .been {
             if data.been.isEmpty {
-                EmptyStateView(message: "Nothing logged yet. Add a few places you already like to get started.",
-                               actionTitle: "Add places you love") { showQuickStart = true }
+                EmptyStateView(message: "Nothing rated yet.", actionTitle: "Rate places near you") { app.openRateFlow() }
             } else if model.shownRows.isEmpty {
                 EmptyStateView(message: "No places logged as \(model.occasion?.label.lowercased() ?? "anything") yet.")
             } else if model.display == .map {

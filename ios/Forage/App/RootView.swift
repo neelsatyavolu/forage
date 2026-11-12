@@ -30,6 +30,9 @@ struct RootView: View {
             sheetContent(sheet)
                 .presentationBackground(Color.card)
         }
+        .fullScreenCover(isPresented: $app.showsRateFlow) {
+            RateFlowView(app: app)
+        }
         .onOpenURL { app.open($0) }
     }
 

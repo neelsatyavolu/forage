@@ -153,6 +153,7 @@ enum ListsText {
         case .ask: "From Ask"
         case .imported: "Imported"
         case .lodestar: "From Lodestar"
+        case .rate: "From rating"
         }
     }
 

@@ -11,10 +11,11 @@ The native SwiftUI app for Forage. It calls the web app's JSON API (`/api/*`) an
 | Lists | Been (one row per place and occasion, sorted by score, filter by occasion) and Want to try, as a list or an Apple Maps view. Log a visit and Quick start sit at the top. |
 | Ask | A sentence in, three picks with reasons out. Without ChatGPT or Grok connected it shows a Connect button instead. |
 | Account | Sign in or create an account, ChatGPT and Grok, Lodestar link and preference import, sign out, delete account. |
+| Rate places (full screen) | Opens on launch while under 10 rated places, until closed once on this device; also from Near me and Lists. No account needed: the first write makes a guest. A grid of nearby places (tap every one you've been to, Want to try, Not been, search), then per place Loved it / It was fine / Didn't like it or a score out of 10 with the occasion guessed, then at most one "Which did you like more?" while onboarding. Undo reverses every write. Guests get a save form from 5 rated. |
 | Log a visit (sheet) | Place search (as you type or Near me), reaction, occasion, date, dishes and note, then up to two "Which did you like more?" questions. |
 | Place (sheet) | Your score per occasion, visits with Delete, "We predicted X, you gave Y", a map with Directions, Want to try. |
 
-Every tab shows a sign-in prompt when signed out, so nothing errors before an account exists.
+Signed out, Near me and Lists show the Rate places prompt; the other tabs show a sign-in prompt, so nothing errors before an account exists.
 
 | | | |
 | --- | --- | --- |
@@ -62,6 +63,8 @@ Debug builds accept these launch arguments (`App/AppState+Debug.swift`):
 | `-ForageTab near\|explore\|lists\|ask\|account` | Opens on that tab |
 | `-ForageDebugAccount "email password"` | Signs in at launch, creating the account if sign-in fails. Local servers only. |
 | `-ForageSheet log\|place:<id>` | Opens the Log sheet or a place once signed in |
+| `-ForageRateDemo pick\|rate\|compare\|save\|finish` | Opens Rate places and drives it to that step, for screenshots (`docs/screenshots/rate-*.png`) |
+| `-rateDismissedAt 1` | Treats Rate places as closed before, so launch lands on the tabs |
 
 ## Test
 

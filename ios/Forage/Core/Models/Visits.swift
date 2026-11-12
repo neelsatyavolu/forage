@@ -9,6 +9,10 @@ struct Visit: Codable, Hashable, Sendable, Identifiable {
     let visitedOn: LocalDate
     let reaction: Reaction
     let occasion: Occasion
+    /// The user's own whole score 1–10 inside the reaction's band; nil means the band only.
+    var rating: Int?
+    /// False when the user didn't say when they went (rating flow); nil from older servers means true.
+    var dated: Bool?
     let dishes: [String]
     let note: String?
     let createdAt: EpochMillis
@@ -36,6 +40,10 @@ struct VisitInput: Codable, Hashable, Sendable {
     var visitedOn: LocalDate
     var reaction: Reaction
     var occasion: Occasion
+    /// Whole 1–10 inside the reaction's band (`RatingBand`); omitted means null.
+    var rating: Int?
+    /// Omitted means true. The rating flow sends false with today's date.
+    var dated: Bool?
     var dishes: [String] = []
     var note: String?
 }
@@ -46,11 +54,14 @@ struct VisitPatch: Encodable, Hashable, Sendable {
     var visitedOn: LocalDate?
     var reaction: Reaction?
     var occasion: Occasion?
+    /// `nil` leaves it, `.some(nil)` clears it back to the band only.
+    var rating: Int??
+    var dated: Bool?
     var dishes: [String]?
     var note: String??
 
     private enum CodingKeys: String, CodingKey {
-        case visitedOn, reaction, occasion, dishes, note
+        case visitedOn, reaction, occasion, rating, dated, dishes, note
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -58,14 +69,17 @@ struct VisitPatch: Encodable, Hashable, Sendable {
         try c.encodeIfPresent(visitedOn, forKey: .visitedOn)
         try c.encodeIfPresent(reaction, forKey: .reaction)
         try c.encodeIfPresent(occasion, forKey: .occasion)
+        try c.encodePatch(rating, forKey: .rating)
+        try c.encodeIfPresent(dated, forKey: .dated)
         try c.encodeIfPresent(dishes, forKey: .dishes)
         try c.encodePatch(note, forKey: .note)
     }
 }
 
-/// `data` of `PATCH /api/visits/{id}`.
+/// `data` of `PATCH /api/visits/{id}`: the visit and the place's score in its occasion now.
 struct VisitResponse: Codable, Hashable, Sendable {
     let visit: Visit
+    var score: Double?
 }
 
 /// One step of "Which did you like more?" (api.md §1.6). `opponent` is the next question,

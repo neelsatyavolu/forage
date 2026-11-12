@@ -58,6 +58,10 @@ final class AppState {
     private(set) var lodestar: LodestarStatus?
     /// Bumped after any visit or Want write so Lists and Near me reload.
     private(set) var listsRevision = 0
+    /// Rated places toward picks (`GET /api/account`'s `progress`; 0 signed out).
+    private(set) var rateProgress: RateProgress = .zero
+    /// The rating flow's full-screen cover (`RateFlowView`).
+    var showsRateFlow = false
 
     var selectedTab: AppTab = .near
     var sheet: AppSheet?
@@ -95,6 +99,7 @@ final class AppState {
             let state = try await api.send(API.Account.current)
             if let user = state.user {
                 session = .signedIn(user)
+                rateProgress = state.progress ?? rateProgress
             } else {
                 becomeSignedOut()
             }
@@ -166,8 +171,13 @@ final class AppState {
 
     func becomeSignedOut() {
         session = .signedOut
+        rateProgress = .zero
         lodestar = nil
         api.clearSessionCookie()
+    }
+
+    func setRateProgress(_ progress: RateProgress) {
+        rateProgress = progress
     }
 
     func setLodestar(_ status: LodestarStatus?) {

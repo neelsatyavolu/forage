@@ -35,7 +35,7 @@ final class ListsModel {
     /// `GET /api/visits` and `GET /api/want`. Keeps what is shown while reloading, but only
     /// for the same account; signed out or another account clears it first.
     func load(_ app: AppState) async {
-        guard let email = app.account?.email else {
+        guard let email = app.account?.ownerKey else {
             reset()
             return
         }
@@ -46,7 +46,7 @@ final class ListsModel {
             async let visits = app.api.send(API.Visits.list)
             async let want = app.api.send(API.Want.list)
             let (been, wanted) = try await (visits, want)
-            guard owner == email, app.account?.email == email else { return }
+            guard owner == email, app.account?.ownerKey == email else { return }
             state = .loaded(ListsData(been: BeenLists.rows(from: been), want: BeenLists.wantEntries(wanted)))
         } catch {
             guard let message = app.handle(error), owner == email else { return }

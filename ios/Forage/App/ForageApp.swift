@@ -12,7 +12,10 @@ struct ForageApp: App {
                 .environment(appState)
                 .preferredColorScheme(theme.colorScheme)
                 .tint(Color.accent)
-                .task { await appState.bootstrap() }
+                .task {
+                    await appState.bootstrap()
+                    appState.openRateFlowOnLaunchIfNeeded()
+                }
                 .onChange(of: scenePhase) { _, phase in
                     // A launch while offline lands signed out with the cookie kept; coming back
                     // to the app checks that cookie again.

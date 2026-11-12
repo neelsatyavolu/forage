@@ -37,6 +37,8 @@ struct AccountRootView: View {
             LoadingRows(count: 2)
         case .signedOut:
             AccountSignedOutView(open: { localSheet = $0 })
+        case .signedIn(let user) where user.guest:
+            AccountGuestView()
         case .signedIn(let user):
             AccountSignedInView(user: user, open: { localSheet = $0 })
         }
@@ -83,6 +85,17 @@ private struct AccountSignedOutView: View {
     }
 }
 
+/// A guest (rated before making an account): save these places with an account, or sign in to
+/// add them to an existing one. Both keep everything rated.
+private struct AccountGuestView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.xxxl) {
+            SavePanel(compact: false, onNotNow: nil).rise()
+            AccountAISection()
+        }
+    }
+}
+
 /// Signed in: who, AI, sessions, delete.
 private struct AccountSignedInView: View {
     let user: AccountUser
@@ -91,7 +104,7 @@ private struct AccountSignedInView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xxxl) {
             SectionRule(label: "Signed in", meta: user.createdAt.map { "Joined \(DateText.isoDay($0))" }) {
-                Text(user.email).textStyle(.body).foregroundStyle(Color.ink)
+                Text(user.email ?? "").textStyle(.body).foregroundStyle(Color.ink)
                     .textSelection(.enabled)
             }
             .rise()
