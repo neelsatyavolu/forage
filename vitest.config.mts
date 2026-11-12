@@ -9,7 +9,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["lib/**/*.test.ts", "components/**/*.test.ts", "app/**/*.test.ts"],
+    include: ["lib/**/*.test.ts", "components/**/*.test.ts", "app/**/*.test.ts", "scripts/**/*.test.ts"],
     // Each database test file starts its own in-memory Postgres (PGlite), which is slow on a busy machine.
     testTimeout: 30_000,
     coverage: {

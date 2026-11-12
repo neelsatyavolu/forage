@@ -17,7 +17,7 @@ import { tilesAround, tilesBox } from "./tiles";
 
 /** Overpass gets slow and heavy past this; wider searches also use stored places. */
 export const OVERPASS_MAX_KM = 5;
-export const TILE_TTL_MS = 14 * 24 * 60 * 60_000;
+export const TILE_TTL_MS = 40 * 24 * 60 * 60_000; // outlives the monthly OSM import
 /** The most a request waits on Overpass, across mirrors. */
 export const QUICK_OVERPASS_MS = 2_500;
 const MAX_STORED = 500;

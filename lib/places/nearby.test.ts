@@ -77,7 +77,7 @@ describe("nearbyWith", () => {
     const { db, deps, deferred } = await setup();
     await addPlace(db, { sourceId: "node/9", name: "Old", lat: PA.lat, lng: PA.lng });
     const tiles = tilesAround(PA, 2);
-    await markTiles(db, tiles, NOW - 30 * DAY);
+    await markTiles(db, tiles, NOW - TILE_TTL_MS - DAY);
     const result = await nearbyWith(deps, PA, 2);
     expect(result).toMatchObject({ source: "stale", refilling: true, places: [{ name: "Old" }] });
     expect(deps.photon).not.toHaveBeenCalled();
