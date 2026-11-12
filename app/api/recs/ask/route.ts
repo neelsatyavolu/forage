@@ -5,6 +5,9 @@ import { requireUserId } from "@/lib/server/auth";
 import { allow } from "@/lib/server/limits";
 import { RecContextSchema } from "@/lib/types";
 
+// Nearby search may refill map tiles in the background after answering (lib/places/refill).
+export const maxDuration = 60;
+
 const AskSchema = z.object({
   lat: RecContextSchema.shape.lat,
   lng: RecContextSchema.shape.lng,

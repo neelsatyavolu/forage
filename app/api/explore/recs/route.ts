@@ -4,6 +4,9 @@ import { requireUserId } from "@/lib/server/auth";
 import { allow } from "@/lib/server/limits";
 import { RecContextSchema } from "@/lib/types";
 
+// Nearby search may refill map tiles in the background after answering (lib/places/refill).
+export const maxDuration = 60;
+
 // Explore only offers the three away-from-home modes; Near me uses "near".
 const ExploreContextSchema = RecContextSchema.extend({ mode: RecContextSchema.shape.mode.exclude(["near"]) });
 

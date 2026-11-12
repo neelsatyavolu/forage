@@ -145,6 +145,10 @@ const LATER = [
     price_ceiling smallint CHECK (price_ceiling BETWEEN 1 AND 4),
     updated_at timestamptz NOT NULL
   )`,
+  // A background refill claims tiles first, so two instances don't refill the
+  // same tiles at once. A claimed tile may not have been fetched yet.
+  `ALTER TABLE osm_tiles ADD COLUMN IF NOT EXISTS claimed_at timestamptz`,
+  `ALTER TABLE osm_tiles ALTER COLUMN fetched_at DROP NOT NULL`,
 ];
 
 const STATEMENTS = [...ACCOUNT_TABLES, ...PLACE_TABLES, ...USER_TABLES, ...LATER];

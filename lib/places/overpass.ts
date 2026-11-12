@@ -6,8 +6,9 @@ import { USER_AGENT } from "./osm";
 import { fromOverpass, overpassBoxQuery } from "./osm-parse";
 
 // Overpass, the free OpenStreetMap query service, through its public mirrors.
-// Any one of them is often at capacity, so each gets a short timeout and a
-// failure moves on to the next, all inside one overall budget.
+// Any one of them is often at capacity, so each gets a timeout and a failure
+// moves on to the next, all inside one overall budget. A mirror that fails is
+// skipped for BREAK_MS in this process (a circuit breaker).
 
 export const OVERPASS_MIRRORS = [
   "https://overpass-api.de/api/interpreter",
@@ -16,8 +17,8 @@ export const OVERPASS_MIRRORS = [
   "https://overpass.kumi.systems/api/interpreter",
 ] as const;
 
-const PER_MIRROR_MS = 3_000;
-const BUDGET_MS = 8_000;
+/** How long a failed mirror is skipped. */
+export const BREAK_MS = 2 * 60_000;
 /** Below this much budget left, another mirror isn't worth starting. */
 const MIN_TRY_MS = 500;
 /** Elements per answer. An answer this long may have been cut short. */
@@ -29,7 +30,33 @@ const FAILED_REMARK = /runtime error|timed out|out of memory/i;
 
 export type OverpassResult = { rows: PlaceInput[]; mirror: string; truncated: boolean };
 
-async function tryMirror(url: string, body: string, timeoutMs: number, fetcher: typeof fetch): Promise<{ rows: PlaceInput[]; elements: number } | null> {
+export type OverpassOptions = {
+  /** Total time across mirrors. */
+  budgetMs: number;
+  /** Most time one mirror gets. */
+  perMirrorMs: number;
+  /** Most mirrors tried (skipped ones don't count). */
+  maxMirrors?: number;
+  /**
+   * Whether running out of time trips the breaker. A short request-path
+   * timeout says little about a mirror that answers slow but well.
+   */
+  breakOnTimeout?: boolean;
+  fetcher?: typeof fetch;
+  clock?: () => number;
+};
+
+/** Mirror URL -> the time until which it is skipped. */
+const broken = new Map<string, number>();
+
+/** Test hook: forget failed mirrors. */
+export function resetOverpassBreaker(): void {
+  broken.clear();
+}
+
+type Attempt = { ok: true; rows: PlaceInput[]; elements: number } | { ok: false; timedOut: boolean };
+
+async function tryMirror(url: string, body: string, timeoutMs: number, fetcher: typeof fetch): Promise<Attempt> {
   try {
     const res = await fetcher(url, {
       method: "POST",
@@ -37,25 +64,34 @@ async function tryMirror(url: string, body: string, timeoutMs: number, fetcher: 
       body,
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, timedOut: false };
     const parsed = Answer.safeParse(await res.json());
-    if (!parsed.success || FAILED_REMARK.test(parsed.data.remark ?? "")) return null;
+    if (!parsed.success || FAILED_REMARK.test(parsed.data.remark ?? "")) return { ok: false, timedOut: false };
     const { elements } = parsed.data;
-    return { rows: elements.map(fromOverpass).filter((p): p is PlaceInput => p !== null), elements: elements.length };
-  } catch {
-    return null;
+    return { ok: true, rows: elements.map(fromOverpass).filter((p): p is PlaceInput => p !== null), elements: elements.length };
+  } catch (err) {
+    return { ok: false, timedOut: err instanceof Error && err.name === "TimeoutError" };
   }
 }
 
 /** Named places to eat or drink inside a box, from the first mirror that answers in time. */
-export async function overpassBox(box: Box, fetcher: typeof fetch = fetch, clock: () => number = Date.now): Promise<OverpassResult> {
-  const deadline = clock() + BUDGET_MS;
-  const body = new URLSearchParams({ data: overpassBoxQuery(box, OVERPASS_LIMIT, Math.ceil(BUDGET_MS / 1000)) }).toString();
+export async function overpassBox(box: Box, opts: OverpassOptions): Promise<OverpassResult> {
+  const { fetcher = fetch, clock = Date.now, maxMirrors = OVERPASS_MIRRORS.length } = opts;
+  const deadline = clock() + opts.budgetMs;
+  const body = new URLSearchParams({ data: overpassBoxQuery(box, OVERPASS_LIMIT, Math.max(1, Math.ceil(opts.perMirrorMs / 1000))) }).toString();
+  let tried = 0;
   for (const mirror of OVERPASS_MIRRORS) {
+    if (tried >= maxMirrors) break;
+    if ((broken.get(mirror) ?? 0) > clock()) continue;
     const left = deadline - clock();
     if (left < MIN_TRY_MS) break;
-    const answer = await tryMirror(mirror, body, Math.min(PER_MIRROR_MS, left), fetcher);
-    if (answer) return { rows: answer.rows, mirror: new URL(mirror).host, truncated: answer.elements >= OVERPASS_LIMIT };
+    tried++;
+    const answer = await tryMirror(mirror, body, Math.min(opts.perMirrorMs, left), fetcher);
+    if (answer.ok) {
+      broken.delete(mirror);
+      return { rows: answer.rows, mirror: new URL(mirror).host, truncated: answer.elements >= OVERPASS_LIMIT };
+    }
+    if (!answer.timedOut || opts.breakOnTimeout) broken.set(mirror, clock() + BREAK_MS);
   }
   throw new PlacesError("The map data service isn't answering. Try again in a moment.", 503);
 }

@@ -4,6 +4,9 @@ import { nearbyPlaces, searchPlaces } from "@/lib/places";
 import { requireUserId } from "@/lib/server/auth";
 import { allow } from "@/lib/server/limits";
 
+// Nearby search may refill map tiles in the background after answering (lib/places/refill).
+export const maxDuration = 60;
+
 // GET /api/places?q=text[&lat&lng]: search places to eat or drink.
 // GET /api/places?lat&lng[&radiusKm]: places near a point, nearest first.
 

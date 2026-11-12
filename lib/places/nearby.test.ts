@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { addPlace, freshDb, placeInput } from "@/test/db";
 import { markTiles, tileTimes } from "../db/osm-tiles";
-import { TILE_TTL_MS, nearbyWith, type NearbyDeps } from "./nearby";
+import { QUICK_OVERPASS_MS, TILE_TTL_MS, nearbyWith, type NearbyDeps } from "./nearby";
 import { photonNearby } from "./osm";
-import { overpassBox, type OverpassResult } from "./overpass";
+import { overpassBox, resetOverpassBreaker, type OverpassResult } from "./overpass";
 import { tilesAround, tilesBox } from "./tiles";
 
 const PA = { lat: 37.4443, lng: -122.1598 };
@@ -20,28 +20,36 @@ const down = async (): Promise<never> => {
   throw new Error("down");
 };
 
+afterEach(() => resetOverpassBreaker());
+
 async function setup(overrides: Partial<NearbyDeps> = {}) {
   const db = await freshDb();
+  const deferred: Promise<unknown>[] = [];
   const deps: NearbyDeps = {
     db,
-    overpass: vi.fn<(box: Parameters<NearbyDeps["overpass"]>[0]) => Promise<OverpassResult>>(down),
+    overpass: vi.fn<NearbyDeps["overpass"]>(down),
     photon: vi.fn<NearbyDeps["photon"]>(down),
+    refill: vi.fn<NearbyDeps["refill"]>(async () => undefined),
+    defer: (work) => deferred.push(work),
     now: NOW,
     ...overrides,
   };
   vi.spyOn(console, "error").mockImplementation(() => {});
-  return { db, deps };
+  return { db, deps, deferred };
 }
 
 describe("nearbyWith", () => {
-  it("falls back across Overpass mirrors, stores the places and records the tiles", async () => {
-    const fetcher = vi.fn(async (url: string) => (url.includes("overpass-api.de") ? json({}, 502) : json({ elements: [node(2, "Two"), node(1, "One")] })));
-    const { db, deps } = await setup({ overpass: (box) => overpassBox(box, fetcher as unknown as typeof fetch) });
+  it("gives Overpass one quick try on the first mirror, stores the places and records the tiles", async () => {
+    const fetcher = vi.fn(async () => json({ elements: [node(2, "Two"), node(1, "One")] }));
+    const quick = (box: Parameters<NearbyDeps["overpass"]>[0]) =>
+      overpassBox(box, { budgetMs: QUICK_OVERPASS_MS, perMirrorMs: QUICK_OVERPASS_MS, maxMirrors: 1, fetcher: fetcher as unknown as typeof fetch });
+    const { db, deps, deferred } = await setup({ overpass: quick });
     const result = await nearbyWith(deps, PA, 2);
-    expect(result).toMatchObject({ source: "overpass", mirror: "overpass.private.coffee" });
+    expect(result).toMatchObject({ source: "overpass", mirror: "overpass-api.de", refilling: false });
     expect(result.places.map((p) => p.name)).toEqual(["One", "Two"]);
     const tiles = tilesAround(PA, 2);
     expect([...(await tileTimes(db, tiles)).values()]).toEqual(tiles.map(() => NOW));
+    expect(deferred).toHaveLength(0);
   });
 
   it("serves fresh tiles from the database without any network call", async () => {
@@ -49,9 +57,10 @@ describe("nearbyWith", () => {
     await addPlace(db, { sourceId: "node/9", name: "Cached", lat: PA.lat, lng: PA.lng });
     await markTiles(db, tilesAround(PA, 2), NOW - 13 * DAY);
     const result = await nearbyWith(deps, PA, 2);
-    expect(result).toMatchObject({ source: "cache", places: [{ name: "Cached" }] });
+    expect(result).toMatchObject({ source: "cache", refilling: false, places: [{ name: "Cached" }] });
     expect(deps.overpass).not.toHaveBeenCalled();
     expect(deps.photon).not.toHaveBeenCalled();
+    expect(deps.refill).not.toHaveBeenCalled();
   });
 
   it("fetches only the box of missing or stale tiles", async () => {
@@ -64,23 +73,26 @@ describe("nearbyWith", () => {
     expect(deps.overpass).toHaveBeenCalledWith(tilesBox([stale]));
   });
 
-  it("serves stale tiles when every mirror fails, without asking Photon", async () => {
-    const { db, deps } = await setup();
+  it("serves stale tiles when Overpass misses, and refills them in the background", async () => {
+    const { db, deps, deferred } = await setup();
     await addPlace(db, { sourceId: "node/9", name: "Old", lat: PA.lat, lng: PA.lng });
-    await markTiles(db, tilesAround(PA, 2), NOW - 30 * DAY);
+    const tiles = tilesAround(PA, 2);
+    await markTiles(db, tiles, NOW - 30 * DAY);
     const result = await nearbyWith(deps, PA, 2);
-    expect(result).toMatchObject({ source: "stale", places: [{ name: "Old" }] });
+    expect(result).toMatchObject({ source: "stale", refilling: true, places: [{ name: "Old" }] });
     expect(deps.photon).not.toHaveBeenCalled();
-    expect([...(await tileTimes(db, tilesAround(PA, 2))).values()].every((t) => t === NOW - 30 * DAY)).toBe(true);
+    expect(deps.refill).toHaveBeenCalledWith(tiles, { perTile: false });
+    expect(deferred).toHaveLength(1);
   });
 
-  it("asks Photon when Overpass fails and the area was never fetched, without marking tiles", async () => {
+  it("asks Photon when Overpass misses and the area was never fetched, and refills in the background", async () => {
     const fetcher = vi.fn(async () => json({ features: [photonFeature(1, "Bean")] }));
-    const { db, deps } = await setup({ photon: (at, km) => photonNearby(at, km, fetcher as unknown as typeof fetch) });
+    const { db, deps, deferred } = await setup({ photon: (at, km) => photonNearby(at, km, fetcher as unknown as typeof fetch) });
     const result = await nearbyWith(deps, PA, 2);
-    expect(result).toMatchObject({ source: "photon", places: [{ name: "Bean" }] });
+    expect(result).toMatchObject({ source: "photon", refilling: true, places: [{ name: "Bean" }] });
     expect(String((fetcher.mock.calls[0] as unknown[])[0])).toContain("photon.komoot.io/reverse");
     expect((await tileTimes(db, tilesAround(PA, 2))).size).toBe(0);
+    expect(deferred).toHaveLength(1);
   });
 
   it("returns stored places when Overpass and Photon both fail", async () => {
@@ -88,14 +100,17 @@ describe("nearbyWith", () => {
     await addPlace(db, { sourceId: "node/9", name: "Logged", lat: PA.lat, lng: PA.lng });
     expect(await nearbyWith(deps, PA, 2)).toMatchObject({ source: "stored", places: [{ name: "Logged" }] });
     const empty = await setup();
-    expect(await nearbyWith(empty.deps, PA, 2)).toEqual({ source: "stored", places: [] });
+    expect(await nearbyWith(empty.deps, PA, 2)).toEqual({ source: "stored", refilling: true, places: [] });
   });
 
-  it("keeps only places inside the radius, nearest first, and refetches a cut-short answer", async () => {
+  it("keeps a cut-short answer's places but refills its tiles one by one", async () => {
     const rows = [placeInput({ sourceId: "node/far", name: "Far", lat: PA.lat + 0.03, lng: PA.lng }), placeInput({ sourceId: "node/near", name: "Near", lat: PA.lat, lng: PA.lng })];
-    const { db, deps } = await setup({ overpass: vi.fn(async () => ({ rows, mirror: "m", truncated: true })) });
-    expect((await nearbyWith(deps, PA, 2)).places.map((p) => p.name)).toEqual(["Near"]);
+    const { db, deps } = await setup({ overpass: vi.fn(async (): Promise<OverpassResult> => ({ rows, mirror: "m", truncated: true })) });
+    const result = await nearbyWith(deps, PA, 2);
+    expect(result).toMatchObject({ source: "overpass", refilling: true });
+    expect(result.places.map((p) => p.name)).toEqual(["Near"]);
     expect((await tileTimes(db, tilesAround(PA, 2))).size).toBe(0);
+    expect(deps.refill).toHaveBeenCalledWith(tilesAround(PA, 2), { perTile: true });
   });
 
   it("caps the tiles fetched at 5 km for wider searches", async () => {
