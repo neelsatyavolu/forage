@@ -15,6 +15,8 @@ final class ListsModel {
     enum Display: Hashable, Sendable { case list, map }
 
     private(set) var state: LoadState<ListsData> = .idle
+    /// The account `state` belongs to, so one account's lists never show for the next.
+    @ObservationIgnored private var owner: String?
     /// A failed remove, shown above the list.
     private(set) var actionError: String?
     var tab: Tab = .been
@@ -30,18 +32,34 @@ final class ListsModel {
         tab == .been ? BeenLists.beenPins(shownRows) : BeenLists.wantPins(state.value?.want.map(\.place) ?? [])
     }
 
-    /// `GET /api/visits` and `GET /api/want`. Keeps what is shown while reloading.
+    /// `GET /api/visits` and `GET /api/want`. Keeps what is shown while reloading, but only
+    /// for the same account; signed out or another account clears it first.
     func load(_ app: AppState) async {
+        guard let email = app.account?.email else {
+            reset()
+            return
+        }
+        if owner != email { reset() }
+        owner = email
         if state.value == nil { state = .loading }
         do {
             async let visits = app.api.send(API.Visits.list)
             async let want = app.api.send(API.Want.list)
             let (been, wanted) = try await (visits, want)
+            guard owner == email, app.account?.email == email else { return }
             state = .loaded(ListsData(been: BeenLists.rows(from: been), want: BeenLists.wantEntries(wanted)))
         } catch {
-            guard let message = app.handle(error) else { return }
+            guard let message = app.handle(error), owner == email else { return }
             if state.value == nil { state = .failed(message) } else { actionError = message }
         }
+    }
+
+    /// Drops everything shown (sign-out or a different account).
+    func reset() {
+        state = .idle
+        actionError = nil
+        occasion = nil
+        owner = nil
     }
 
     /// `DELETE /api/want`, then drops the entry locally.

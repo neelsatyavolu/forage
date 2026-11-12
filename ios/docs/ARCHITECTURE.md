@@ -110,9 +110,13 @@ backend changes: report gaps.
 
 Copied from Lodestar's `Core/Networking` with the names changed:
 
-- `APIClient` (one per app, `AppState.api`) owns one `URLSession` on `HTTPCookieStorage.shared` with
-  `httpShouldSetCookies = true`, so `fg_session`, `fg_device`, the AI cookies and `fg_lodestar_flow`
-  flow on every call. It never sends `Origin`. Non-GET calls without a body send `{}`. JSON bodies use
+- `APIClient` (one per app, `AppState.api`) owns one `URLSession` on a private in-memory cookie store
+  (an ephemeral configuration's) with `httpShouldSetCookies = true`, so `fg_session`, `fg_device`, the
+  AI cookies and `fg_lodestar_flow` flow on every call. Unlike Lodestar it does not use
+  `HTTPCookieStorage.shared`, which is written in plain form to Library/Cookies and backed up.
+  `CookieVault` saves the cookies that have an expiry date to the Keychain
+  (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) after every response and restores them at
+  launch; sign-out deletes `fg_session` and saves again. It never sends `Origin`. Non-GET calls without a body send `{}`. JSON bodies use
   `Content-Type: application/json`. `DELETE /api/want` and `DELETE /api/account` carry a body.
 - `send(_ endpoint) async throws -> T` unwraps `data` via `ResponseDecoder`. Errors are `APIError`
   with a user-facing `.message` ("Request failed (HTTP n).", "Can't reach Forage. Check your

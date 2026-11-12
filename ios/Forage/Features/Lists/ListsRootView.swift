@@ -14,8 +14,7 @@ struct ListsRootView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
         }
-        .task(id: ReloadKey(signedIn: app.isSignedIn, revision: app.listsRevision)) {
-            guard app.isSignedIn else { return }
+        .task(id: ReloadKey(account: app.account?.email, revision: app.listsRevision)) {
             await model.load(app)
         }
         .sheet(isPresented: $showQuickStart) {
@@ -24,7 +23,7 @@ struct ListsRootView: View {
     }
 
     private struct ReloadKey: Hashable {
-        let signedIn: Bool
+        let account: String?
         let revision: Int
     }
 

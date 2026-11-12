@@ -52,7 +52,7 @@ struct APIClientTests {
     private func client(host: String) -> APIClient {
         let cookies = HTTPCookieStorage.sharedCookieStorage(forGroupContainerIdentifier: "forage-tests-\(host)")
         return APIClient(config: APIConfig(baseURL: URL(string: "https://\(host)")!), cookies: cookies,
-                         protocolClasses: [StubProtocol.self])
+                         vault: nil, protocolClasses: [StubProtocol.self])
     }
 
     @Test func sendDecodesData() async throws {
@@ -93,14 +93,45 @@ struct APIClientTests {
 
     @Test func sessionCookieHelpers() throws {
         let base = URL(string: "https://cookie.test")!
-        let api = APIClient(config: APIConfig(baseURL: base), cookies: .shared, protocolClasses: [StubProtocol.self])
+        let api = APIClient(config: APIConfig(baseURL: base), vault: nil, protocolClasses: [StubProtocol.self])
         let cookie = try #require(HTTPCookie(properties: [
             .name: APIClient.sessionCookieName, .value: "u.1.1.sig", .domain: "cookie.test", .path: "/", .secure: "TRUE",
         ]))
-        HTTPCookieStorage.shared.setCookie(cookie)
+        api.cookies.setCookie(cookie)
         #expect(api.hasSessionCookie)
+        #expect(!(HTTPCookieStorage.shared.cookies(for: base) ?? []).contains { $0.name == APIClient.sessionCookieName })
         api.clearSessionCookie()
         #expect(!api.hasSessionCookie)
+    }
+
+    @Test func sessionCookieSurvivesRelaunchThroughKeychainOnly() async throws {
+        let host = "vault.test"
+        let base = URL(string: "https://\(host)")!
+        let vault = CookieVault(service: "co.xanom.forage.tests.\(UUID().uuidString)")
+        defer { vault.clear() }
+        StubProtocol.stub(host: host, .init(body: #"{"ok":true,"data":{"connected":{"codex":false,"grok":false}}}"#))
+        let first = APIClient(config: APIConfig(baseURL: base), vault: vault, protocolClasses: [StubProtocol.self])
+        // URLSession only applies Set-Cookie for real HTTP, so put the cookie in as if a response had set it.
+        let cookie = try #require(HTTPCookie(properties: [
+            .name: APIClient.sessionCookieName, .value: "u.1.1.sig", .domain: host, .path: "/", .secure: "TRUE",
+            .expires: Date.now.addingTimeInterval(3600), HTTPCookiePropertyKey("HttpOnly"): "TRUE",
+        ]))
+        first.cookies.setCookie(cookie)
+        _ = try await first.send(API.AI.status)
+        #expect(first.hasSessionCookie)
+        #expect(!(HTTPCookieStorage.shared.cookies(for: base) ?? []).contains { $0.name == APIClient.sessionCookieName })
+
+        // A new client (a relaunch) gets the cookie back from the Keychain.
+        let relaunched = APIClient(config: APIConfig(baseURL: base), vault: vault, protocolClasses: [StubProtocol.self])
+        let restored = try #require(relaunched.cookies.cookies(for: base)?.first { $0.name == APIClient.sessionCookieName })
+        #expect(restored.value == "u.1.1.sig")
+        #expect(restored.isHTTPOnly)
+        #expect(restored.isSecure)
+
+        // Sign-out removes it from the Keychain too.
+        relaunched.clearSessionCookie()
+        let afterSignOut = APIClient(config: APIConfig(baseURL: base), vault: vault, protocolClasses: [StubProtocol.self])
+        #expect(!afterSignOut.hasSessionCookie)
     }
 
     @Test @MainActor func appStateDropsToSignedOutOnlyForSignInFirst() {
