@@ -1,0 +1,60 @@
+name: OSM import
+
+# Monthly import of OpenStreetMap places to eat or drink for the US into the
+# production database, so nearby search doesn't depend on the public Overpass
+# servers. See scripts/osm-import/import.ts. Free: public repo minutes,
+# Geofabrik extracts, Neon free plan (the run stops itself above 400 MB).
+
+on:
+  schedule:
+    - cron: "0 9 3 * *"
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "Geofabrik state names, comma-separated (e.g. rhode-island,delaware). Empty = all states, DC and Puerto Rico, with pruning."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: osm-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Check DATABASE_URL secret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::The DATABASE_URL repository secret is not set (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install osmium
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool && osmium --version | head -1
+
+      - name: Import
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OSM_STATES: ${{ inputs.states }}
+        run: pnpm dlx tsx@4.19.2 scripts/osm-import/import.ts --work-dir "$RUNNER_TEMP/osm"
