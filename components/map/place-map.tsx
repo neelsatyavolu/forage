@@ -66,8 +66,13 @@ export function PlaceMap({ pins, selectedId, onSelect, label = "Map of places" }
         setReady(true);
       });
     });
+    // Keep the canvas the size of its frame: it starts hidden on phones (List view)
+    // and the frame can change size after the map loads.
+    const watch = new ResizeObserver(() => instance?.resize());
+    if (box.current) watch.observe(box.current);
     return () => {
       cancelled = true;
+      watch.disconnect();
       instance?.remove();
       map.current = null;
     };

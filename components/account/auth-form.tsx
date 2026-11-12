@@ -46,7 +46,8 @@ export function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <form onSubmit={submit} className="max-w-sm space-y-6" aria-describedby={error ? "auth-error" : undefined}>
       <h2 className="font-serif text-[24px] leading-[1.25]">{TITLE[mode]}</h2>
-      {mode === "register" && <p className="text-body">An account keeps your visits, lists and taste profile, on any device.</p>}
+      {mode === "signin" && <p className="text-body">New here? You can rate places without an account and save them later.</p>}
+      {mode === "register" && <p className="text-body">An account keeps your places, lists and taste profile, on any device.</p>}
       <Field label="Email">
         <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
       </Field>

@@ -10,7 +10,7 @@ type Refreshed = TasteView & { aiConnected: boolean };
 const words = (tags: [string, number][]) => tags.map(([t]) => t.slice(t.indexOf(":") + 1).replace(/_/g, " ")).join(", ");
 
 /** The taste summary, which the user can rewrite, and the tags it leans on. */
-export function TastePanel() {
+export function TasteSection() {
   const [view, setView] = useState<TasteView | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState<"refresh" | "save" | null>(null);
@@ -41,7 +41,7 @@ export function TastePanel() {
 
   const refresh = () =>
     run("refresh", () => post<Refreshed>("/api/taste/refresh", {}), (v) =>
-      !(v as Refreshed).aiConnected ? "Updated from your history. Connect ChatGPT or Grok on the Account page for a written summary." : v.summaryEdited ? "Updated. Your own summary was kept." : null,
+      !(v as Refreshed).aiConnected ? "Updated from your places. Connect ChatGPT or Grok below for a written summary." : v.summaryEdited ? "Updated. Your own summary was kept." : null,
     );
   const save = (summary: string | null) => run("save", () => api<TasteView>("/api/taste", { method: "PUT", body: JSON.stringify({ summary }) }));
 
@@ -49,7 +49,7 @@ export function TastePanel() {
     <SectionRule label="Your taste" meta={view?.summaryEdited ? "Written by you" : view?.summary ? "Written by AI" : undefined}>
       {view === null && !error && <div className="skeleton h-20 max-w-[60ch] rounded-sm" aria-label="Loading" />}
       {view && draft === null && (
-        <p className="max-w-[60ch] font-serif text-[18px] leading-[1.6] text-body">{view.summary || "No summary yet. Log a few places, then update it."}</p>
+        <p className="max-w-[60ch] font-serif text-[18px] leading-[1.6] text-body">{view.summary || "No summary yet. Rate a few places, then update it."}</p>
       )}
       {draft !== null && (
         <textarea

@@ -102,7 +102,7 @@ export function useLocation({ prompt = true }: { prompt?: boolean } = {}): { sta
     else
       void alreadyAllowed().then((ok) => {
         if (ok) locate();
-        else if (!last) setState({ status: "unavailable", message: "" });
+        else if (!last) setState((prev) => (prev.status === "idle" ? { status: "unavailable", message: "" } : prev));
       });
   }, [locate, prompt]);
 

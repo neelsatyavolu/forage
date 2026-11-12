@@ -2,13 +2,15 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import type { Metadata, Viewport } from "next";
 import { Newsreader } from "next/font/google";
-import { Nav } from "@/components/nav";
+import { TabBar } from "@/components/nav/tab-bar";
+import { TopBar } from "@/components/nav/top-bar";
+import { RateSheetProvider } from "@/components/rate/rate-sheet";
 import "./globals.css";
 
 const newsreader = Newsreader({ subsets: ["latin"], axes: ["opsz"], style: ["normal", "italic"], variable: "--font-newsreader" });
 
 const TITLE = "Forage";
-const DESCRIPTION = "Restaurant picks from the places you've already eaten. Log a visit in a tap, then get recommendations near you or anywhere you travel.";
+const DESCRIPTION = "Restaurant picks from the places you've already eaten. Rate places in a tap, then get recommendations near you or anywhere you travel.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
@@ -18,6 +20,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#0E0E0D" },
     { media: "(prefers-color-scheme: light)", color: "#F7F5EF" },
@@ -34,8 +37,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="flex min-h-full flex-col">
-        <Nav />
-        {children}
+        <RateSheetProvider>
+          <TopBar />
+          {children}
+          <TabBar />
+        </RateSheetProvider>
       </body>
     </html>
   );

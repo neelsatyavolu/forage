@@ -1,13 +1,6 @@
-import type { Metadata } from "next";
-import { AskPanel } from "@/components/recs/ask-panel";
-import { Page } from "@/components/ui";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Ask" };
-
+// Ask lives on Near me now, as the input at the top of the picks.
 export default function AskPage() {
-  return (
-    <Page title="Ask" lede="Describe tonight in a sentence and get three picks with reasons.">
-      <AskPanel />
-    </Page>
-  );
+  redirect("/?ask=1");
 }

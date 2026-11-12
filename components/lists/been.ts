@@ -1,5 +1,5 @@
 import type { MapPin } from "@/components/map/pins";
-import type { Occasion, Place } from "@/lib/types";
+import { OCCASIONS, type Occasion, type Place } from "@/lib/types";
 import type { BeenRow, VisitsResponse } from "./types";
 
 /**
@@ -20,7 +20,7 @@ export function beenRows({ visits, places, scores }: VisitsResponse): BeenRow[] 
     }
     const place = placeById.get(v.placeId);
     if (!place) continue;
-    rows.set(key, { place, occasion: v.occasion, score: scoreOf.get(key) ?? null, reaction: v.reaction, lastVisited: v.visitedOn, visits: 1 });
+    rows.set(key, { place, occasion: v.occasion, score: scoreOf.get(key) ?? null, reaction: v.reaction, lastVisited: v.visitedOn, dated: v.dated, visits: 1 });
   }
   return [...rows.values()].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || a.place.name.localeCompare(b.place.name));
 }
@@ -49,9 +49,7 @@ export function wantPins(places: readonly Place[]): MapPin[] {
   return places.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, kind: "want", score: null }));
 }
 
-/** "Chinese, noodles · San Francisco": what a place is and where, for a list row. */
-export function placeLine(place: Place): string {
-  const what = place.cuisine.length ? place.cuisine.slice(0, 3).join(", ") : (place.tags.attributes?.[0] ?? null);
-  const where = place.address ?? place.city;
-  return [what ? what.charAt(0).toUpperCase() + what.slice(1) : null, where].filter(Boolean).join(" · ");
+/** Rows under each occasion, in the app's occasion order, each ranked on its own. Empty occasions are left out. */
+export function groupByOccasion(rows: readonly BeenRow[]): { occasion: Occasion; rows: BeenRow[] }[] {
+  return OCCASIONS.map((occasion) => ({ occasion, rows: rows.filter((r) => r.occasion === occasion) })).filter((g) => g.rows.length > 0);
 }

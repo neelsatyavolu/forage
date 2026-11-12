@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Lists", robots: { index: false } };
 
 export default function ListsPage() {
   return (
-    <Page title="Lists" lede="Places you've been, ranked within each occasion, and places you want to try.">
+    <Page title="Lists" lede="Places you've rated, ranked within each occasion, and places you want to try.">
       <ListsView />
     </Page>
   );

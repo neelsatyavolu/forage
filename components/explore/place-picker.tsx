@@ -1,98 +1,81 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { inputClass } from "@/components/ui";
-import { api } from "@/lib/client";
+import { AreaSearch } from "@/components/recs/area-search";
 import { dateSpan, type Area, type TripSummary } from "./types";
 import type { TripsState } from "./use-trips";
 
-type Search = { status: "idle" } | { status: "loading" } | { status: "done"; areas: Area[] } | { status: "error"; message: string };
+const RECENT_KEY = "forage.explore.recent";
+const RECENT_MAX = 3;
 
-const row = "flex min-h-11 w-full cursor-pointer items-center justify-between gap-4 border-b border-hairline px-2 py-2 text-left hover:bg-hover";
+const chip = "inline-flex h-8 max-w-full cursor-pointer items-center gap-2 truncate rounded-full border border-hairline-strong px-3 font-mono text-[12px] text-ink hover:bg-hover disabled:cursor-default disabled:text-stone pointer-coarse:h-11";
 
-/** Search a city or neighborhood, or start from one of the linked Lodestar trips. */
+function readRecent(): Area[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as unknown;
+    return Array.isArray(v) ? (v as Area[]).filter((a) => typeof a?.lat === "number" && typeof a?.name === "string").slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Remembers an area at the front of the recent list (this browser only). */
+export function rememberArea(a: Area): void {
+  try {
+    const next = [a, ...readRecent().filter((r) => r.label !== a.label)].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    // Private windows can refuse storage; recent areas are only a shortcut.
+  }
+}
+
+/** Search a city or neighborhood; under it, Lodestar trips and the last three areas as chips. */
 export function PlacePicker({ trips, onArea, onTrip, busyTrip }: { trips: TripsState; onArea: (a: Area) => void; onTrip: (t: TripSummary) => void; busyTrip: string | null }) {
-  const [q, setQ] = useState("");
-  const [search, setSearch] = useState<Search>({ status: "idle" });
-
-  useEffect(() => {
-    const text = q.trim();
-    if (text.length < 2) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSearch({ status: "idle" });
-      return;
-    }
-    const ctl = new AbortController();
-    const t = setTimeout(async () => {
-      setSearch({ status: "loading" });
-      try {
-        const { areas } = await api<{ areas: Area[] }>(`/api/explore/geocode?q=${encodeURIComponent(text)}`, { signal: ctl.signal });
-        setSearch({ status: "done", areas });
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setSearch({ status: "error", message: err instanceof Error ? err.message : "Search failed." });
-      }
-    }, 300);
-    return () => {
-      clearTimeout(t);
-      ctl.abort();
-    };
-  }, [q]);
-
-  const tripsReady = trips.status === "ready" && trips.trips.length > 0;
+  const [recent, setRecent] = useState<Area[]>([]);
+  // Read after mount: storage isn't there during the server render.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setRecent(readRecent()), []);
+  const tripList = trips.status === "ready" ? trips.trips.filter((t) => t.destination) : [];
   return (
-    <div className="grid gap-8 min-[900px]:grid-cols-[7fr_5fr]">
-      <div>
-        <label className="block">
-          <span className="mb-2 block font-mono text-[12px] text-mute">City or neighborhood</span>
-          <input className={inputClass} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Lisbon, or Mission District" autoComplete="off" spellCheck={false} />
-        </label>
-        {search.status === "loading" && <div className="skeleton mt-4 h-11 rounded-sm" aria-label="Searching" />}
-        {search.status === "error" && <p className="mt-2 font-mono text-[12px] text-danger">{search.message}</p>}
-        {search.status === "done" &&
-          (search.areas.length ? (
-            <ul className="mt-4 border-t border-hairline">
-              {search.areas.map((a) => (
-                <li key={a.label}>
-                  <button type="button" className={row} onClick={() => onArea(a)}>
-                    <span className="text-[14px]">{a.label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-4 text-[14px] text-mute">No city or neighborhood by that name.</p>
+    <div className="space-y-4">
+      <AreaSearch
+        label="Where"
+        placeholder="Lisbon, or Mission District"
+        onArea={onArea}
+        onChoose={(s) => onArea({ label: s.label, name: s.label, lat: s.lat, lng: s.lng, radiusKm: 2 })}
+      />
+      {tripList.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[12px] text-mute">Trips</span>
+          {tripList.map((t) => (
+            <button key={t.id} type="button" className={chip} onClick={() => onTrip(t)} disabled={busyTrip !== null}>
+              {t.destination}
+              {dateSpan(t.startDate, t.endDate) && <span className="text-mute">{busyTrip === t.id ? "Finding" : dateSpan(t.startDate, t.endDate)}</span>}
+            </button>
           ))}
-      </div>
-      <div>
-        <span className="mb-2 block font-mono text-[12px] text-mute">Your Lodestar trips</span>
-        {trips.status === "loading" && <div className="skeleton h-11 rounded-sm" aria-label="Loading trips" />}
-        {trips.status === "unlinked" && (
-          <p className="text-[14px] text-body">
-            <a href="/account" className="text-accent underline underline-offset-[3px]">
-              Connect Lodestar
-            </a>{" "}
-            to explore around your trips.
-          </p>
-        )}
-        {trips.status === "error" && <p className="font-mono text-[12px] text-danger">{trips.message}</p>}
-        {trips.status === "ready" && !tripsReady && <p className="text-[14px] text-mute">No trips in Lodestar yet.</p>}
-        {tripsReady && (
-          <ul className="border-t border-hairline">
-            {trips.trips.map((t) => (
-              <li key={t.id}>
-                <button type="button" className={row} onClick={() => onTrip(t)} disabled={busyTrip !== null || !t.destination}>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[14px] font-medium">{t.title}</span>
-                    <span className="block truncate text-[13px] text-mute">{t.destination ?? "No destination set"}</span>
-                  </span>
-                  <span className="shrink-0 font-mono text-[12px] text-mute tnum">{busyTrip === t.id ? "Finding" : (dateSpan(t.startDate, t.endDate) ?? "No dates")}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        </div>
+      )}
+      {recent.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[12px] text-mute">Recent</span>
+          {recent.map((a) => (
+            <button key={a.label} type="button" className={chip} onClick={() => onArea(a)}>
+              {a.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {trips.status === "unlinked" && (
+        <p className="text-[13px] text-mute">
+          Plan around a trip?{" "}
+          <Link href="/account" className="text-accent underline underline-offset-[3px]">
+            Connect Lodestar in You
+          </Link>
+          .
+        </p>
+      )}
+      {trips.status === "error" && <p className="font-mono text-[12px] text-danger">{trips.message}</p>}
     </div>
   );
 }

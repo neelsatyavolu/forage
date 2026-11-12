@@ -44,30 +44,3 @@ export function usePlaceSearch(text: string, near: LatLng | null): SearchState {
   if (done?.key !== key) return { places: done?.places ?? [], loading: true, error: null, status: null };
   return { places: done.places, loading: false, error: done.error, status: done.status };
 }
-
-/** Asks the browser for a location once, on demand. */
-export function useLocation(): { near: LatLng | null; locating: boolean; error: string | null; locate: () => void } {
-  const [near, setNear] = useState<LatLng | null>(null);
-  const [locating, setLocating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const locate = () => {
-    if (!("geolocation" in navigator)) {
-      setError("This browser can't share a location.");
-      return;
-    }
-    setLocating(true);
-    setError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setNear({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocating(false);
-      },
-      () => {
-        setError("Location is off. Search by name instead.");
-        setLocating(false);
-      },
-      { maximumAge: 300_000, timeout: 10_000 },
-    );
-  };
-  return { near, locating, error, locate };
-}

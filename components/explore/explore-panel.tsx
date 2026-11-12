@@ -2,38 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { useAccount } from "@/components/account/use-account";
-import { EmptyState, SectionRule } from "@/components/ui";
+import { RecRows } from "@/components/recs/rec-rows";
+import { ButtonLink, EmptyState, SectionRule } from "@/components/ui";
 import { api, post } from "@/lib/client";
-import type { Rec } from "@/lib/types";
+import { RATE_GOAL, type Rec } from "@/lib/types";
 import { AddToTrip } from "./add-to-trip";
 import { ModePicker } from "./mode-picker";
-import { PlacePicker } from "./place-picker";
-import { RecList } from "./rec-list";
+import { PlacePicker, rememberArea } from "./place-picker";
 import { dateSpan, type Area, type ExploreMode, type Spot, type TripSummary } from "./types";
 import { useTrips } from "./use-trips";
 
 type Results = { status: "idle" } | { status: "loading" } | { status: "error"; message: string } | { status: "ready"; recs: Rec[] };
 
-/** Explore: choose a place (or a Lodestar trip) and a mode, see picks, add one to a trip day. */
+/** Explore: an area (or a Lodestar trip) and a mode side by side, then picks; a pick can go on a trip day. */
 export function ExplorePanel() {
   const { state } = useAccount();
   if (state.status === "loading") return <div className="skeleton h-40 rounded-sm" aria-label="Loading" />;
   if (state.status === "signed-out")
     return (
-      <EmptyState
-        action={
-          <a href="/account" className="inline-flex h-9 items-center rounded-sm border border-hairline-strong px-4 text-[14px] font-medium hover:bg-hover pointer-coarse:min-h-11">
-            Sign in
-          </a>
-        }
-      >
-        Sign in to get picks for anywhere you&apos;re going.
-      </EmptyState>
+      <EmptyState action={<ButtonLink href="/rate">Rate places</ButtonLink>}>Rate a few places you&apos;ve been, then get picks anywhere you&apos;re going.</EmptyState>
     );
-  return <Explore />;
+  return <Explore rough={state.progress.rated < RATE_GOAL} />;
 }
 
-function Explore() {
+function Explore({ rough }: { rough: boolean }) {
   const trips = useTrips();
   const [spot, setSpot] = useState<Spot | null>(null);
   const [mode, setMode] = useState<ExploreMode>("travel");
@@ -58,6 +50,7 @@ function Explore() {
 
   const pickArea = (a: Area) => {
     setPickError(null);
+    rememberArea(a);
     setSpot({ ...a, trip: null });
   };
 
@@ -82,49 +75,42 @@ function Explore() {
 
   return (
     <>
-      <SectionRule
-        label="Where"
-        meta={
-          spot ? (
-            <button type="button" onClick={() => setSpot(null)} className="cursor-pointer text-mute hover:text-ink pointer-coarse:min-h-11">
-              Change
-            </button>
-          ) : undefined
-        }
-      >
+      <div className="grid items-start gap-8 min-[900px]:grid-cols-[7fr_5fr]">
         {spot ? (
           <div>
+            <span className="mb-2 block font-mono text-[12px] text-mute">Where</span>
             <p className="font-serif text-[24px] leading-[1.25]">{spot.trip ? spot.trip.title : spot.name}</p>
             <p className="mt-1 text-[14px] text-mute">
               {spot.label}
               {tripDates && <span className="ml-2 font-mono text-[12px] tnum">{tripDates}</span>}
             </p>
+            <button type="button" onClick={() => setSpot(null)} className="mt-2 cursor-pointer text-[14px] text-accent hover:underline pointer-coarse:min-h-11">
+              Change
+            </button>
           </div>
         ) : (
           <PlacePicker trips={trips} onArea={pickArea} onTrip={pickTrip} busyTrip={busyTrip} />
         )}
-        {pickError && <p className="mt-2 font-mono text-[12px] text-danger">{pickError}</p>}
-      </SectionRule>
+        <ModePicker mode={mode} onChange={setMode} />
+      </div>
+      {pickError && <p className="font-mono text-[12px] text-danger">{pickError}</p>}
 
       {spot && (
         <SectionRule label="Picks" meta={results.status === "ready" ? `${results.recs.length} places` : undefined}>
-          <ModePicker mode={mode} onChange={setMode} />
-          <div className="mt-8">
-            {results.status === "loading" && (
-              <div className="space-y-3" aria-label="Loading picks">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="skeleton h-20 rounded-sm" />
-                ))}
-              </div>
-            )}
-            {results.status === "error" && <p className="font-mono text-[12px] text-danger">{results.message}</p>}
-            {results.status === "ready" &&
-              (results.recs.length ? (
-                <RecList recs={results.recs} onAdd={linkedTrips.length ? setAdding : null} />
-              ) : (
-                <EmptyState>No restaurants found around here yet. Try a wider area or another mode.</EmptyState>
+          {results.status === "loading" && (
+            <div className="space-y-3" aria-label="Loading picks">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="skeleton h-20 rounded-sm" />
               ))}
-          </div>
+            </div>
+          )}
+          {results.status === "error" && <p className="font-mono text-[12px] text-danger">{results.message}</p>}
+          {results.status === "ready" &&
+            (results.recs.length ? (
+              <RecRows key={`${spot.lat}:${spot.lng}:${mode}`} recs={results.recs} source="rec" rough={rough} onAddToTrip={linkedTrips.length ? setAdding : undefined} />
+            ) : (
+              <EmptyState>No restaurants found around here yet. Try a wider area or another mode.</EmptyState>
+            ))}
         </SectionRule>
       )}
 

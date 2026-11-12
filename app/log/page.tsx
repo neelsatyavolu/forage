@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
-import { LogFlow } from "@/components/log/log-flow";
+import { RatePageFlow } from "@/components/rate/rate-page-flow";
 import { Page } from "@/components/ui";
 
-export const metadata: Metadata = { title: "Log a visit", robots: { index: false } };
+export const metadata: Metadata = { title: "Rate a place", robots: { index: false } };
 
+// The + Rate sheet as a full page, for deep links (/log?place=<id>).
 export default async function LogPage({ searchParams }: PageProps<"/log">) {
   const { place } = await searchParams;
   return (
-    <Page title="Log a visit">
-      <LogFlow initialPlaceId={typeof place === "string" ? place : undefined} />
+    <Page title="Rate a place">
+      <RatePageFlow initialPlaceId={typeof place === "string" ? place : undefined} />
     </Page>
   );
 }

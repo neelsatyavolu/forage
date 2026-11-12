@@ -4,7 +4,9 @@
 
 Restaurant recommendations from the places you've already eaten. Log a visit with one tap on a reaction (loved, fine, didn't like) and an occasion (quick bite, casual, night out, special), answer at most two "which did you like more?" questions, and Forage keeps a 0–10 score for every place within each occasion. From those visits it builds a taste profile and ranks real places near you, anywhere you travel, or from a sentence you type. AI runs on your own ChatGPT or Grok subscription; without it, everything except Ask still works on the plain scoring. Forage can also link to your Lodestar account to see your trips and add a pick to a trip day.
 
-Tabs: **Near me** (picks around you, "Something new" or "Go-to"), **Explore** (any city, neighborhood or Lodestar trip, in Travel, Splurge or Stretch mode), **Lists** (Been and Want to try, with a map), **Log**, **Ask** and **Account**. New accounts can start from `/log/quick`: pick an occasion and add places you love in one tap each.
+Tabs: **Near me** (picks around you, "Something new" or "Go-to", with Ask at the top), **Explore** (any city, neighborhood or Lodestar trip, in Travel, Splurge or Stretch mode), **Lists** (Been and Want to try, with a map) and **You** (account, taste, appearance, AI, Lodestar). **+ Rate** in the top bar rates one place from anywhere. On phones the tabs sit in a bottom bar.
+
+No account is needed to start. A new visitor (and anyone with fewer than 10 rated places who hasn't closed it) lands on `/rate`: tap every nearby place you've been to, one tap each for how it was, at most one "which did you like more?" each, and a score out of 10 right away. The first write makes a guest user; saving later (after 5 ratings, or in You) turns that same user into an account. Picks start at 5 rated places. Every step can be undone (U or Cmd/Ctrl+Z) and closed without losing anything.
 
 Design: `docs/superpowers/specs/2026-11-11-forage-design.md`. Visuals follow Ledger (`~/DESIGN.md`); tokens are in `app/globals.css`.
 
@@ -78,7 +80,8 @@ pnpm build
 - Ranking weights, the one-year half-life and the calibration limits were tuned on synthetic data only.
 - AI tag cards are written only for places you have logged; nearby candidates rely on OSM cuisine, price and attributes until the rerank.
 - There is no way to add a place OpenStreetMap doesn't have.
-- Quick start logs places as loved with today's date and asks no comparisons, so they all start at 8.5.
+- Places rated in `/rate` are dated the day they were rated (shown as "Rated Nov 11"), unless a date is added under Add details.
+- Near me shows "Near you", not the neighborhood name; there's no reverse geocoding yet.
 - Dietary needs only hide places whose OpenStreetMap data says `diet:<need>=no`; most places don't say either way, so they still show.
 - The dining budget only hides places with a known price, which OpenStreetMap rarely has.
 - The Lodestar link has only been tested against fake responses, not the live Lodestar.

@@ -1,13 +1,12 @@
 "use client";
 
-import { Monitor, Moon, Sun } from "lucide-react";
 import { useSyncExternalStore } from "react";
+import { Segmented } from "./segmented";
 
-// Cycles system → light → dark. The choice lives on <html data-theme> and in
+// System, light or dark. The choice lives on <html data-theme> and in
 // localStorage; app/layout.tsx applies it before first paint.
 
 type Theme = "system" | "light" | "dark";
-const ORDER: Theme[] = ["system", "light", "dark"];
 const EVENT = "forage-theme";
 
 function read(): Theme {
@@ -41,21 +40,14 @@ function apply(t: Theme) {
   window.dispatchEvent(new Event(EVENT));
 }
 
-const ICON = { system: Monitor, light: Sun, dark: Moon };
+const OPTIONS: { value: Theme; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
-export function ThemeToggle() {
+/** System, Light or Dark, for the You page. */
+export function ThemeChoice() {
   const theme = useSyncExternalStore(subscribe, read, () => "system" as Theme);
-  const Icon = ICON[theme];
-  const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length];
-  return (
-    <button
-      type="button"
-      onClick={() => apply(next)}
-      aria-label={`Theme: ${theme}. Switch to ${next}.`}
-      title={`Theme: ${theme}`}
-      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-sm text-mute hover:text-ink pointer-coarse:size-11"
-    >
-      <Icon size={16} aria-hidden />
-    </button>
-  );
+  return <Segmented label="Theme" options={OPTIONS} value={theme} onChange={apply} />;
 }

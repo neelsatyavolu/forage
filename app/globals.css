@@ -3,7 +3,7 @@
 /* Ledger (~/DESIGN.md): warm off-black / paper, Newsreader for what people
    read, Geist for controls, Geist Mono for every number and label, blue as
    the only color. Rules over boxes, 4-6px radii, no shadows. Follows the
-   system theme; data-theme (set by the toggle) overrides it. */
+   system theme; data-theme (set on the You page) overrides it. */
 :root {
   --canvas: #0e0e0d;
   --card: #141413;

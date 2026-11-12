@@ -5,13 +5,13 @@ import { api } from "@/lib/client";
 import { inputClass } from "../ui";
 import { parseLatLng, type Spot } from "./use-location";
 
-type Area = { label: string; name: string; lat: number; lng: number };
+export type Area = { label: string; name: string; lat: number; lng: number; radiusKm: number };
 type Search = { status: "idle" } | { status: "loading" } | { status: "done"; areas: Area[] } | { status: "error"; message: string };
 
 const row = "flex min-h-11 w-full cursor-pointer items-center border-b border-hairline px-2 py-2 text-left text-[14px] hover:bg-hover";
 
 /** A city or neighborhood search (Photon, through /api/explore/geocode), or a typed "lat, lng". */
-export function AreaSearch({ onChoose, autoFocus = false, label = "City, neighborhood, or lat, lng" }: { onChoose: (s: Spot) => void; autoFocus?: boolean; label?: string }) {
+export function AreaSearch({ onChoose, onArea, autoFocus = false, label = "City, neighborhood, or lat, lng", placeholder = "Mission District" }: { onChoose: (s: Spot) => void; onArea?: (a: Area) => void; autoFocus?: boolean; label?: string; placeholder?: string }) {
   const [q, setQ] = useState("");
   const [search, setSearch] = useState<Search>({ status: "idle" });
 
@@ -46,10 +46,10 @@ export function AreaSearch({ onChoose, autoFocus = false, label = "City, neighbo
   const typed = parseLatLng(q);
 
   return (
-    <div className="max-w-[480px]">
+    <div className="w-full max-w-[480px]">
       <label className="block">
         <span className="mb-2 block font-mono text-[12px] text-mute">{label}</span>
-        <input className={inputClass} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Mission District" autoComplete="off" spellCheck={false} autoFocus={autoFocus} />
+        <input className={inputClass} value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} autoComplete="off" spellCheck={false} autoFocus={autoFocus} />
       </label>
       {typed && (
         <ul className="mt-4 border-t border-hairline">
@@ -67,7 +67,7 @@ export function AreaSearch({ onChoose, autoFocus = false, label = "City, neighbo
           <ul className="mt-4 border-t border-hairline">
             {search.areas.map((a) => (
               <li key={a.label}>
-                <button type="button" className={row} onClick={() => pick({ lat: a.lat, lng: a.lng, label: a.name })}>
+                <button type="button" className={row} onClick={() => (onArea ? (onArea(a), setQ("")) : pick({ lat: a.lat, lng: a.lng, label: a.name }))}>
                   {a.label}
                 </button>
               </li>

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { accountChanged } from "@/components/account/use-account";
 import { nearLabel, useLocation } from "@/components/recs/use-location";
 import { Button, Spinner } from "@/components/ui";
 import { dismissCookie } from "@/lib/rate/entry";
@@ -40,6 +41,7 @@ export function RateFlow() {
 
   const leave = (to: string) => {
     document.cookie = dismissCookie();
+    accountChanged();
     router.push(to);
   };
   const onSaved = (message: string) => {

@@ -1,10 +1,4 @@
-import { OCCASION_LABEL, OCCASIONS, type Occasion, type Reaction } from "@/lib/types";
-
-export const REACTION_OPTIONS: { value: Reaction; label: string }[] = [
-  { value: "loved", label: "Loved it" },
-  { value: "fine", label: "It was fine" },
-  { value: "disliked", label: "Didn't like it" },
-];
+import { OCCASION_LABEL, OCCASIONS, type Occasion } from "@/lib/types";
 
 export const OCCASION_OPTIONS: { value: Occasion; label: string }[] = OCCASIONS.map((o) => ({ value: o, label: OCCASION_LABEL[o] }));
 

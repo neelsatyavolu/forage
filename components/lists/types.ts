@@ -28,4 +28,4 @@ export type LiveDetailsView = {
 export type PlaceResponse = { place: Place; live: LiveDetailsView | null; liveError: string | null; visits: Visit[]; scores: PlaceScore[]; wanted: boolean };
 
 /** One row of the Been list: a place within one occasion. */
-export type BeenRow = { place: Place; occasion: Occasion; score: number | null; reaction: Reaction; lastVisited: string; visits: number };
+export type BeenRow = { place: Place; occasion: Occasion; score: number | null; reaction: Reaction; lastVisited: string; dated: boolean; visits: number };
