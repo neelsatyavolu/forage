@@ -2,6 +2,28 @@
 
 The native SwiftUI app for Forage. It calls the web app's JSON API (`/api/*`) and signs in with the same session cookie. It needs iOS 26 or later, Xcode 27 and XcodeGen, and uses no third-party packages. Maps and location use Apple's MapKit and CoreLocation, so the app adds no running cost.
 
+## What's in it
+
+| Tab or sheet | What it does |
+| --- | --- |
+| Near me | Picks around your location with Something new / Go-to, predicted scores, and an AI reason per pick when ChatGPT or Grok is connected. With location off it offers a city search and Open Settings. |
+| Explore | Picks for a city, neighborhood or Lodestar trip in Travel, Splurge or Stretch mode. With Lodestar linked, Add to trip puts a pick on a trip day. |
+| Lists | Been (one row per place and occasion, sorted by score, filter by occasion) and Want to try, as a list or an Apple Maps view. Log a visit and Quick start sit at the top. |
+| Ask | A sentence in, three picks with reasons out. Without ChatGPT or Grok connected it shows a Connect button instead. |
+| Account | Sign in or create an account, ChatGPT and Grok, Lodestar link and preference import, sign out, delete account. |
+| Log a visit (sheet) | Place search (as you type or Near me), reaction, occasion, date, dishes and note, then up to two "Which did you like more?" questions. |
+| Place (sheet) | Your score per occasion, visits with Delete, "We predicted X, you gave Y", a map with Directions, Want to try. |
+
+Every tab shows a sign-in prompt when signed out, so nothing errors before an account exists.
+
+| | | |
+| --- | --- | --- |
+| ![Near me](docs/screenshots/near-me.png) | ![Lists](docs/screenshots/lists.png) | ![Place](docs/screenshots/place.png) |
+| ![Log a visit](docs/screenshots/log-visit.png) | ![Explore](docs/screenshots/explore.png) | ![Ask without AI](docs/screenshots/ask-no-ai.png) |
+| ![Account](docs/screenshots/account.png) | ![Location off](docs/screenshots/near-location-off.png) | ![Signed out](docs/screenshots/signed-out-near.png) |
+
+Screenshots are from the simulator against a local dev server with seeded data near Civic Center, San Francisco.
+
 How the app is built is described in `docs/ARCHITECTURE.md`. The endpoint contracts are in `docs/api.md`.
 
 ## Generate the project
@@ -33,7 +55,13 @@ xcrun simctl install booted /tmp/forage-ios-dd/Build/Products/Debug-iphonesimula
 xcrun simctl launch booted co.xanom.forage
 ```
 
-Debug builds accept `-ForageTab near|explore|lists|ask|account`, which opens the app on that tab.
+Debug builds accept these launch arguments (`App/AppState+Debug.swift`):
+
+| Argument | Effect |
+| --- | --- |
+| `-ForageTab near\|explore\|lists\|ask\|account` | Opens on that tab |
+| `-ForageDebugAccount "email password"` | Signs in at launch, creating the account if sign-in fails. Local servers only. |
+| `-ForageSheet log\|place:<id>` | Opens the Log sheet or a place once signed in |
 
 ## Test
 
@@ -54,6 +82,23 @@ xcrun simctl launch booted co.xanom.forage -apiBaseURL http://localhost:3000
 ```
 
 In Xcode, add `-apiBaseURL http://localhost:3000` under Scheme > Run > Arguments. Debug builds also have Account > Developer, with "Use localhost:3000" and "Use production"; the change applies the next time the app opens. The value is stored in the `apiBaseURL` user default. App Transport Security allows plain HTTP to local addresses. On a physical device, use your Mac's LAN address instead of `localhost`.
+
+A full local run, as used for the screenshots:
+
+```bash
+# repo root: throwaway in-memory database on a spare port
+FORAGE_SECRET=$(openssl rand -hex 32) DATABASE_URL=pglite://memory pnpm dev --port 3107
+
+# ios/: one simulator, location granted and set
+xcrun simctl boot "iPhone 17 Pro"
+xcrun simctl install booted /tmp/forage-ios-dd/Build/Products/Debug-iphonesimulator/Forage.app
+xcrun simctl privacy booted grant location co.xanom.forage
+xcrun simctl location booted set 37.7793,-122.4193
+xcrun simctl launch booted co.xanom.forage -apiBaseURL http://localhost:3107 \
+  -ForageDebugAccount "demo@forage.test some-long-password" -ForageTab near
+xcrun simctl io booted screenshot near.png
+xcrun simctl shutdown booted
+```
 
 The app sends no `Origin` header, so the server's same-origin check passes without any backend changes.
 
@@ -76,3 +121,15 @@ Until then, users paste the link into Account > "Have a reset link?".
 ## Fonts and icon
 
 Geist and Geist Mono (copied from the Lodestar app) and Newsreader Regular are bundled under the SIL Open Font License; the licences are in `Forage/Resources/Fonts/`. The app icon is a generated placeholder: a Newsreader "f" and one blue dot on the dark canvas.
+
+## Known gaps
+
+- Connect Lodestar uses an in-app web view until the web adds the JSON callback from `docs/api.md` §11; the native `ASWebAuthenticationSession` flow is written and switched off.
+- Editing a visit has no screen yet (the place sheet offers Delete, like the web).
+- Choosing Log a visit from a place sheet replaces the sheet; after logging you land back on the tab.
+- Want to try is removed with a long press on the row (or from the place sheet), not a swipe.
+- ChatGPT/Grok sign-in and Lodestar connect were not run end to end in the simulator; they need real accounts.
+
+## Cost
+
+Nothing here costs money: MapKit, CoreLocation, AuthenticationServices and WebKit are Apple's, place data is OpenStreetMap through Forage's server, and AI runs on the user's own ChatGPT or Grok subscription. The app never calls Google; live Google details appear only if the server owner sets `GOOGLE_PLACES_KEY`.
