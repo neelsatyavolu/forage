@@ -70,7 +70,7 @@ function simulate(seed: number) {
     const u = utility(persona, place, rand);
     const reaction: Reaction = u >= 0.9 ? "loved" : u <= -0.5 ? "disliked" : "fine";
     const day = new Date(NOW - (i * 9 + 1) * 86_400_000).toISOString().slice(0, 10);
-    const visit: Visit = { id: `v${i}`, userId: "u", placeId: place.id, visitedOn: day, reaction, occasion: "casual", dishes: place.tags.dishes ?? [], note: null, createdAt: 0 };
+    const visit: Visit = { id: `v${i}`, userId: "u", placeId: place.id, visitedOn: day, reaction, occasion: "casual", rating: null, dated: true, dishes: place.tags.dishes ?? [], note: null, createdAt: 0 };
     return { place, visits: [visit], scores: {} };
   });
   const loved = history.filter((h) => h.visits[0].reaction === "loved");

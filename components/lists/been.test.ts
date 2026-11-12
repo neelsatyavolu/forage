@@ -6,7 +6,7 @@ const place = (id: string, name: string, extra: Partial<Place> = {}): Place => (
   id, name, source: "osm", sourceId: id, googlePlaceId: null, lat: 1, lng: 2, address: null, city: "Oakland", country: null, cuisine: [], priceLevel: null, tags: {}, updatedAt: 0, ...extra,
 });
 const visit = (placeId: string, occasion: Visit["occasion"], visitedOn: string, reaction: Visit["reaction"] = "loved"): Visit => ({
-  id: `${placeId}-${visitedOn}`, userId: "u", placeId, occasion, visitedOn, reaction, dishes: [], note: null, createdAt: 0,
+  id: `${placeId}-${visitedOn}`, userId: "u", placeId, occasion, visitedOn, reaction, rating: null, dated: true, dishes: [], note: null, createdAt: 0,
 });
 const score = (placeId: string, occasion: Visit["occasion"], s: number) => ({ userId: "u", placeId, occasion, score: s, updatedAt: 0 });
 

@@ -84,6 +84,8 @@ export function fromOverpass(element: unknown): PlaceInput | null {
     ...(str(t.opening_hours) ? { openingHours: str(t.opening_hours)!.slice(0, 500) } : {}),
     ...(str(t.website) ?? str(t["contact:website"]) ? { website: (str(t.website) ?? str(t["contact:website"]))!.slice(0, 500) } : {}),
     ...(str(t.phone) ?? str(t["contact:phone"]) ? { phone: (str(t.phone) ?? str(t["contact:phone"]))!.slice(0, 60) } : {}),
+    ...(str(t.brand) ? { brand: str(t.brand)!.slice(0, 200) } : {}),
+    ...(str(t.wikidata) ?? str(t["brand:wikidata"]) ? { wikidata: (str(t.wikidata) ?? str(t["brand:wikidata"]))!.slice(0, 40) } : {}),
   };
   return {
     source: "osm",

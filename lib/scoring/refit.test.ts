@@ -73,4 +73,11 @@ describe("nextOpponent", () => {
     const { db, a } = await setup();
     expect(await nextOpponent(db, USER_A, a.id, "casual")).toBeNull();
   });
+
+  it("uses the rating of the place's latest visit", async () => {
+    const { db, a } = await setup();
+    await insertVisit(db, USER_A, { placeId: a.id, visitedOn: "2026-10-01", reaction: "loved", occasion: "casual", rating: 10, dishes: [], note: null }, 1000);
+    await insertVisit(db, USER_A, { placeId: a.id, visitedOn: "2026-11-01", reaction: "fine", occasion: "casual", rating: 7, dishes: [], note: null }, 1000);
+    expect((await refitOccasion(db, USER_A, "casual", 2000)).get(a.id)).toBe(7);
+  });
 });

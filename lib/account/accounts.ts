@@ -18,7 +18,7 @@ export async function register(q: Queryable, input: { email: string; password: s
 /** The account's id when the password is right. */
 export async function signIn(q: Queryable, input: { email: string; password: string }): Promise<string | null> {
   const user = await findUserByEmail(q, input.email);
-  if (!user) {
+  if (!user?.passwordHash) {
     // Spend the same time as a real check, so response time doesn't reveal who has an account.
     await verifyPassword(input.password, DUMMY_HASH);
     return null;

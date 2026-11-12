@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { getDb } from "../db/client";
 import { deleteAiConnection, getAiConnection, saveAiConnection } from "../db/ai-connections";
 import { currentUserId } from "../server/auth";
-import { type Provider, type Tokens, refreshTokens } from "./providers";
+import { isProvider, type Provider, type Tokens, refreshTokens } from "./providers";
 import { deriveKey, seal, unseal } from "./seal";
 
 // An AI connection belongs to the signed-in account when there is one, and is
@@ -152,6 +152,19 @@ function openSession(provider: Provider, owner: Owner, sealed: string): Tokens |
   } catch {
     return null;
   }
+}
+
+/**
+ * A guest's saved connection sealed again for the account it is merging into
+ * (a sealed value is bound to its owner, so it can't just be moved). Null when
+ * it can't be opened or the provider is unknown.
+ */
+export function resealForUser(provider: string, sealed: string, fromUserId: string, toUserId: string): string | null {
+  if (!isProvider(provider)) return null;
+  const tokens = openSession(provider, { kind: "user", id: fromUserId }, sealed);
+  if (!tokens) return null;
+  const to: Owner = { kind: "user", id: toUserId };
+  return seal(key(), JSON.stringify({ ...tokens, owner: ownerKey(to) } satisfies StoredSession), sessionAad(provider, to));
 }
 
 export async function hasSession(provider: Provider, owner: Owner): Promise<boolean> {

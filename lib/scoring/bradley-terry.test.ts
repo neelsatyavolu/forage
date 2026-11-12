@@ -64,4 +64,25 @@ describe("fitScores", () => {
   it("returns nothing for no items", () => {
     expect(fitScores([], [beat("a", "b")]).size).toBe(0);
   });
+
+  it("starts a rated place at its rating, with no comparisons", () => {
+    const s = fitScores([{ id: "a", reaction: "loved", rating: 9 }, { id: "b", reaction: "fine", rating: 5 }, { id: "c", reaction: "fine", rating: null }], []);
+    expect(s.get("a")).toBe(9);
+    expect(s.get("b")).toBe(5);
+    expect(s.get("c")).toBe(BAND_PRIOR.fine);
+  });
+
+  it("moves a rated place less than an unrated one for the same comparison", () => {
+    const rated = fitScores([{ id: "a", reaction: "loved", rating: 8.5 }, { id: "b", reaction: "loved", rating: 8.5 }], [beat("a", "b")]);
+    const unrated = fitScores([{ id: "a", reaction: "loved" }, { id: "b", reaction: "loved" }], [beat("a", "b")]);
+    expect(rated.get("a")! - 8.5).toBeGreaterThan(0);
+    expect(rated.get("a")! - 8.5).toBeLessThan(unrated.get("a")! - 8.5);
+  });
+
+  it("reproduces the unrated fit exactly when rating is null", () => {
+    const comps = [beat("a", "b"), beat("b", "c")];
+    const plain = fitScores(["a", "b", "c"].map((id) => ({ id, reaction: "fine" as const })), comps);
+    const nulls = fitScores(["a", "b", "c"].map((id) => ({ id, reaction: "fine" as const, rating: null })), comps);
+    expect(nulls).toEqual(plain);
+  });
 });

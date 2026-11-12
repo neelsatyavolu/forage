@@ -8,6 +8,10 @@ export type WantResponse = { items: WantItem[]; places: Place[] };
 /** After logging a visit or answering a comparison: the score now, and what to ask next (null when done). */
 export type CompareStep = { score: number | null; opponent: Place | null; asked: number };
 export type LogResponse = { visit: Visit } & CompareStep;
+/** POST /api/comparisons: the saved answer's id (to undo it) and the subject's score now (same as `score`, kept for older clients). */
+export type CompareAnswer = CompareStep & { id: number; subjectScore: number | null };
+/** PATCH /api/visits/:id: the visit and the place's fitted score in its (new) occasion. */
+export type VisitEditResponse = { visit: Visit; score: number | null };
 
 export type LiveDetailsView = {
   rating: number | null;

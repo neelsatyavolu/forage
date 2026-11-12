@@ -5,7 +5,7 @@ import { getPlace, type Box } from "../db/places";
 import { env } from "../server/env";
 import type { LatLng, Place } from "../types";
 import { googleClient, type LiveDetails } from "./google";
-import { nearbyWith, QUICK_OVERPASS_MS, TILE_TTL_MS, type NearbyDeps } from "./nearby";
+import { nearbyWith, QUICK_OVERPASS_MS, TILE_TTL_MS, type NearbyDeps, type NearbySource } from "./nearby";
 import { photonNearby, photonSearch } from "./osm";
 import { overpassBox } from "./overpass";
 import { refillTiles } from "./refill";
@@ -21,6 +21,7 @@ import { liveDetails, searchStored } from "./store";
 
 export { PlacesError } from "./errors";
 export type { LiveDetails } from "./google";
+export type { NearbySource } from "./nearby";
 
 /** Restaurants, cafes and bars matching free text, nearest to `near` first when given. At most 20. */
 export async function searchPlaces(q: string, near?: LatLng): Promise<Place[]> {
@@ -31,6 +32,11 @@ export async function searchPlaces(q: string, near?: LatLng): Promise<Place[]> {
 
 /** Restaurants, cafes and bars within radiusKm of a point, nearest first. */
 export async function nearbyPlaces(lat: number, lng: number, radiusKm: number): Promise<Place[]> {
+  return (await nearbySearch(lat, lng, radiusKm)).places;
+}
+
+/** nearbyPlaces with where the answer came from (fresh tiles, Overpass, stale tiles, Photon or stored places). */
+export async function nearbySearch(lat: number, lng: number, radiusKm: number): Promise<{ places: Place[]; source: NearbySource }> {
   const db = await getDb();
   const now = Date.now();
   const refillDeps = {
@@ -47,7 +53,8 @@ export async function nearbyPlaces(lat: number, lng: number, radiusKm: number): 
     defer: waitUntil,
     now,
   };
-  return (await nearbyWith(deps, { lat, lng }, radiusKm)).places;
+  const { places, source } = await nearbyWith(deps, { lat, lng }, radiusKm);
+  return { places, source };
 }
 
 /** A background refill gives one mirror at most this long before trying the next. */

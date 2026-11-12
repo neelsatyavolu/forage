@@ -3,7 +3,7 @@
 import type { Place, WantItem } from "@/lib/types";
 import { placeLine } from "./been";
 
-const SOURCE: Record<WantItem["source"], string> = { manual: "Added", rec: "From a pick", ask: "From Ask", import: "Imported", lodestar: "From Lodestar" };
+const SOURCE: Record<WantItem["source"], string> = { manual: "Added", rec: "From a pick", ask: "From Ask", import: "Imported", lodestar: "From Lodestar", rate: "From rating" };
 
 export function WantList({ items, places, selectedId, onSelect }: { items: WantItem[]; places: Place[]; selectedId: string | null; onSelect: (placeId: string) => void }) {
   const byId = new Map(places.map((p) => [p.id, p]));

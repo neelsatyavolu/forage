@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CompareStep } from "@/components/lists/types";
+import type { CompareAnswer } from "@/components/lists/types";
 import { fail, handle, ok, readBody } from "@/lib/api";
 import { getDb } from "@/lib/db/client";
 import { answerComparison } from "@/lib/scoring/flow";
@@ -10,7 +10,8 @@ import { ComparisonInputSchema, IdSchema } from "@/lib/types";
 
 // POST /api/comparisons {comparison: {winnerPlaceId, loserPlaceId, occasion}, next?: {subjectPlaceId, asked}}
 // Saves the answer and refits the occasion. With `next` (the place being
-// logged and how many questions are now answered) it also returns the next question.
+// logged and how many questions are now answered) it also returns the subject's
+// score and the next question. The answer's id is for DELETE /api/comparisons/:id.
 
 const Body = z.object({
   comparison: ComparisonInputSchema,
@@ -23,7 +24,7 @@ export function POST(req: Request) {
     if (!(await allow("writes", userId))) return fail("Too many changes. Wait a few minutes and try again.", 429);
     const { comparison, next } = await readBody(req, Body);
     const db = await getDb();
-    const body: CompareStep = await db.transaction((tx) => answerComparison(tx, userId, comparison, next ?? null, Date.now()));
+    const body: CompareAnswer = await db.transaction((tx) => answerComparison(tx, userId, comparison, next ?? null, Date.now()));
     return ok(body);
   });
 }

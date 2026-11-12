@@ -33,6 +33,9 @@ export const PlaceTagsSchema = z.looseObject({
   website: z.string().optional(),
   phone: z.string().optional(),
   description: z.string().optional(),
+  /** OSM `brand` and `wikidata`: a chain or a well-known place (rating deck ranking). */
+  brand: z.string().optional(),
+  wikidata: z.string().optional(),
 });
 export type PlaceTags = z.infer<typeof PlaceTagsSchema>;
 
@@ -58,20 +61,44 @@ export type PlaceInput = z.infer<typeof PlaceInputSchema>;
 export const PlaceSchema = PlaceInputSchema.extend({ id: IdSchema, updatedAt: z.number() });
 export type Place = z.infer<typeof PlaceSchema>;
 
-/** A visit as the user logs it. */
-export const VisitInputSchema = z.object({
+/** Each reaction's whole-number range on the 1-10 rating scale. */
+export const RATING_BAND: Record<Reaction, readonly [number, number]> = { disliked: [1, 4], fine: [5, 7], loved: [8, 10] };
+/** A user's own score for a place, out of 10. Optional: null means the reaction band alone. */
+export const RatingSchema = z.number().int().min(1).max(10);
+
+/** True when the rating is absent or inside the reaction's band. */
+export const ratingInBand = (v: { reaction: Reaction; rating: number | null }): boolean =>
+  v.rating === null || (v.rating >= RATING_BAND[v.reaction][0] && v.rating <= RATING_BAND[v.reaction][1]);
+export const RATING_BAND_MESSAGE = "That rating doesn't match the reaction.";
+
+const VisitFieldsSchema = z.object({
   placeId: IdSchema,
   visitedOn: DaySchema,
   reaction: ReactionSchema,
   occasion: OccasionSchema,
+  rating: RatingSchema.nullable().default(null),
+  /** False when the user didn't say when they went (the rating flow); visitedOn is then the day it was rated. */
+  dated: z.boolean().default(true),
   dishes: z.array(z.string().trim().min(1).max(100)).max(20).default([]),
   note: z.string().trim().max(2000).nullable().default(null),
 });
+
+/** A visit as the user logs it. Older clients send neither rating nor dated. */
+export const VisitInputSchema = VisitFieldsSchema.refine(ratingInBand, { message: RATING_BAND_MESSAGE, path: ["rating"] });
 export type VisitInput = z.infer<typeof VisitInputSchema>;
-export const VisitPatchSchema = VisitInputSchema.omit({ placeId: true }).partial();
+/** Every field optional; the band check runs on the merged visit (lib/scoring/flow editVisit). */
+export const VisitPatchSchema = z.object({
+  visitedOn: DaySchema,
+  reaction: ReactionSchema,
+  occasion: OccasionSchema,
+  rating: RatingSchema.nullable(),
+  dated: z.boolean(),
+  dishes: VisitFieldsSchema.shape.dishes.unwrap(),
+  note: z.string().trim().max(2000).nullable(),
+}).partial();
 export type VisitPatch = z.infer<typeof VisitPatchSchema>;
 
-export const VisitSchema = VisitInputSchema.extend({ id: IdSchema, userId: IdSchema, createdAt: z.number() });
+export const VisitSchema = VisitFieldsSchema.extend({ id: IdSchema, userId: IdSchema, createdAt: z.number() });
 export type Visit = z.infer<typeof VisitSchema>;
 
 export const ComparisonInputSchema = z
@@ -84,9 +111,19 @@ export const ScoreSchema = z.number().min(0).max(10);
 export const PlaceScoreSchema = z.object({ userId: IdSchema, placeId: IdSchema, occasion: OccasionSchema, score: ScoreSchema, updatedAt: z.number() });
 export type PlaceScore = z.infer<typeof PlaceScoreSchema>;
 
-export const WantSourceSchema = z.enum(["manual", "rec", "ask", "import", "lodestar"]);
+export const WantSourceSchema = z.enum(["manual", "rec", "ask", "import", "lodestar", "rate"]);
 export type WantSource = z.infer<typeof WantSourceSchema>;
 export type WantItem = { userId: string; placeId: string; addedAt: number; source: WantSource };
+
+/** How many distinct places the user has rated, and the two milestones the UI counts toward. */
+export const FIRST_PICKS_AT = 5;
+export const RATE_GOAL = 10;
+export const ProgressSchema = z.object({
+  rated: z.number().int().min(0),
+  firstPicksAt: z.literal(FIRST_PICKS_AT),
+  goal: z.literal(RATE_GOAL),
+});
+export type Progress = z.infer<typeof ProgressSchema>;
 
 /** Weights over feature-card tags, keyed "cuisine:ramen", "dish:dumplings", "vibe:loud", "price:2", ... in [-1, 1]. */
 export const TasteWeightsSchema = z.record(z.string().max(100), z.number().min(-1).max(1));

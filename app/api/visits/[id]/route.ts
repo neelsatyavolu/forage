@@ -1,3 +1,4 @@
+import type { VisitEditResponse } from "@/components/lists/types";
 import { fail, handle, ok, readBody } from "@/lib/api";
 import { getDb } from "@/lib/db/client";
 import { editVisit, removeVisit } from "@/lib/scoring/flow";
@@ -12,7 +13,8 @@ async function visitId(params: Ctx["params"]): Promise<string | null> {
   return id.success ? id.data : null;
 }
 
-// PATCH /api/visits/:id {visitedOn?, reaction?, occasion?, dishes?, note?}: change a visit and refit.
+// PATCH /api/visits/:id {visitedOn?, reaction?, occasion?, rating?, dated?, dishes?, note?}: change a visit and refit.
+// Fields left out keep their value. Answers with the visit and the place's score in its occasion now.
 export function PATCH(req: Request, { params }: Ctx) {
   return handle(req, "visit edit", async () => {
     const userId = await requireUserId();
@@ -21,7 +23,8 @@ export function PATCH(req: Request, { params }: Ctx) {
     if (!id) return fail("That visit wasn't found.", 404);
     const patch = await readBody(req, VisitPatchSchema);
     const db = await getDb();
-    return ok({ visit: await db.transaction((tx) => editVisit(tx, userId, id, patch, Date.now())) });
+    const body: VisitEditResponse = await db.transaction((tx) => editVisit(tx, userId, id, patch, Date.now()));
+    return ok(body);
   });
 }
 

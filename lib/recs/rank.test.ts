@@ -13,7 +13,7 @@ const place = (id: string, cuisine: string[], km = 0.5, extra: Partial<Place> = 
 });
 const been = (p: Place, reaction: Visit["reaction"], scores: HistoryItem["scores"] = {}): HistoryItem => ({
   place: p, scores,
-  visits: [{ id: `v-${p.id}`, userId: "u", placeId: p.id, visitedOn: "2026-11-01", reaction, occasion: "casual", dishes: [], note: null, createdAt: 0 }],
+  visits: [{ id: `v-${p.id}`, userId: "u", placeId: p.id, visitedOn: "2026-11-01", reaction, occasion: "casual", rating: null, dated: true, dishes: [], note: null, createdAt: 0 }],
 });
 
 const ramenLoved = place("ramen-been", ["ramen"]);

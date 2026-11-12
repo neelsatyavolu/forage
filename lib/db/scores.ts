@@ -77,3 +77,9 @@ export async function getScore(q: Queryable, userId: string, placeId: string, oc
 export async function deleteScore(q: Queryable, userId: string, placeId: string, occasion?: Occasion): Promise<void> {
   await q.query("DELETE FROM place_scores WHERE user_id = $1 AND place_id = $2 AND ($3::text IS NULL OR occasion = $3)", [userId, placeId, occasion ?? null]);
 }
+
+/** Deletes one of the user's own comparisons. The deleted row, or null when there is none. */
+export async function deleteComparison(q: Queryable, userId: string, id: number): Promise<Comparison | null> {
+  const [row] = await q.query("DELETE FROM comparisons WHERE user_id = $1 AND id = $2 RETURNING *", [userId, id]);
+  return row ? rowToComparison(row) : null;
+}

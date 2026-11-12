@@ -5,7 +5,7 @@ import { accountIn } from "../account/accounts";
 import { createSession, SESSION_COOKIE, SESSION_TTL_MS, sessionKey } from "../account/session";
 import { HttpError, clientIp } from "../api";
 import { getDb } from "../db/client";
-import { sessionVersionOf } from "../db/users";
+import { isGuest, sessionVersionOf, touchGuest } from "../db/users";
 import { env } from "./env";
 
 let key: Buffer | null = null;
@@ -17,10 +17,25 @@ export async function currentUserId(): Promise<string | null> {
   return token ? accountIn(await getDb(), signingKey(), token, Date.now()) : null;
 }
 
-/** The signed-in account's id. Throws a 401 HttpError (which handle() answers) when signed out. */
+/** A guest whose session has less than this left gets a fresh 30-day cookie, so an active guest never expires before cleanup. */
+const GUEST_RENEW_BELOW_MS = 23 * 24 * 60 * 60 * 1000;
+
+/** Milliseconds left on a token already checked by accountIn. */
+const msLeft = (token: string, now: number) => Number(token.split(".")[1]) - now;
+
+/**
+ * The signed-in user's id (a guest counts). Throws a 401 HttpError (which
+ * handle() answers) when there is none. Marks a guest as seen, at most once a
+ * day, and renews a guest's cookie once it has less than 23 days left.
+ */
 export async function requireUserId(): Promise<string> {
-  const userId = await currentUserId();
-  if (!userId) throw new HttpError("Sign in first.", 401);
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const db = await getDb();
+  const now = Date.now();
+  const userId = token ? await accountIn(db, signingKey(), token, now) : null;
+  if (!userId || !token) throw new HttpError("Sign in first.", 401);
+  await touchGuest(db, userId, now);
+  if (msLeft(token, now) < GUEST_RENEW_BELOW_MS && (await isGuest(db, userId))) await startSession(userId);
   return userId;
 }
 

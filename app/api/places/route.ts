@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { fail, handle, ok } from "@/lib/api";
 import { nearbyPlaces, searchPlaces } from "@/lib/places";
-import { requireUserId } from "@/lib/server/auth";
+import { currentUserId, ipKey } from "@/lib/server/auth";
 import { allow } from "@/lib/server/limits";
 
 // Nearby search may refill map tiles in the background after answering (lib/places/refill).
@@ -20,8 +20,9 @@ const MAX_NEARBY = 100;
 
 export function GET(req: Request) {
   return handle(req, "place search", async () => {
-    const userId = await requireUserId();
-    if (!(await allow("places", userId)) || !(await allow("placesDaily", userId))) return fail("Too many searches. Wait a few minutes and try again.", 429);
+    // No session is fine (the rating deck's search runs before the first write); limits then key on the IP.
+    const key = (await currentUserId()) ?? ipKey(req);
+    if (!(await allow("places", key)) || !(await allow("placesDaily", key))) return fail("Too many searches. Wait a few minutes and try again.", 429);
     const params = Object.fromEntries(new URL(req.url).searchParams);
     const parsed = query.safeParse(params);
     if (!parsed.success) return fail("Type a place name, or share a location.", 400);

@@ -37,6 +37,12 @@ describe("fromOverpass", () => {
     tags: { amenity: "cafe", name: "Bean", cuisine: "coffee_shop;breakfast", "addr:street": "Elm St", "addr:housenumber": "5", "addr:city": "NYC", outdoor_seating: "yes", "diet:vegan": "only", opening_hours: "Mo-Fr 07:00-15:00", website: "https://bean.example" },
   };
 
+  it("keeps brand and wikidata, falling back to brand:wikidata", () => {
+    expect(fromOverpass({ ...way, tags: { ...way.tags, brand: "Blue Bottle", wikidata: "Q1" } })?.tags).toMatchObject({ brand: "Blue Bottle", wikidata: "Q1" });
+    expect(fromOverpass({ ...way, tags: { ...way.tags, "brand:wikidata": "Q2" } })?.tags).toMatchObject({ wikidata: "Q2" });
+    expect(fromOverpass(way)?.tags).not.toHaveProperty("brand");
+  });
+
   it("reads cuisine, address, attributes and hours", () => {
     expect(fromOverpass(way)).toEqual({
       source: "osm",

@@ -149,6 +149,34 @@ const LATER = [
   // same tiles at once. A claimed tile may not have been fetched yet.
   `ALTER TABLE osm_tiles ADD COLUMN IF NOT EXISTS claimed_at timestamptz`,
   `ALTER TABLE osm_tiles ALTER COLUMN fetched_at DROP NOT NULL`,
+  // The rating flow (docs/superpowers/specs/2026-11-11-rate-nearby-and-web-cleanup.md).
+  // A visit's optional score out of 10, inside its reaction's band (checked by
+  // the API); null means the band alone. `dated` is false when the user didn't
+  // say when they went, and visited_on is then the day they rated it.
+  `ALTER TABLE visits ADD COLUMN IF NOT EXISTS rating smallint CHECK (rating BETWEEN 1 AND 10)`,
+  `ALTER TABLE visits ADD COLUMN IF NOT EXISTS dated boolean NOT NULL DEFAULT true`,
+  // Places the user said they haven't been to, kept out of the rating deck for a while.
+  `CREATE TABLE IF NOT EXISTS place_skips (
+    user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    place_id uuid NOT NULL REFERENCES places (id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL,
+    PRIMARY KEY (user_id, place_id)
+  )`,
+  // Guests: real users with no email or password yet, made on their first
+  // write. Signing up fills both in on the same row. Guests unseen for 30 days
+  // are deleted (lib/db/users deleteStaleGuests).
+  `ALTER TABLE users ALTER COLUMN email DROP NOT NULL`,
+  `ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_guest boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz`,
+  // A full account always has both; a guest has neither.
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_guest_shape') THEN
+      ALTER TABLE users ADD CONSTRAINT users_guest_shape
+        CHECK ((is_guest AND email IS NULL AND password_hash IS NULL) OR (NOT is_guest AND email IS NOT NULL AND password_hash IS NOT NULL));
+    END IF;
+  END $$`,
+  `CREATE INDEX IF NOT EXISTS users_guest_seen ON users (last_seen_at) WHERE is_guest`,
 ];
 
 const STATEMENTS = [...ACCOUNT_TABLES, ...PLACE_TABLES, ...USER_TABLES, ...LATER];

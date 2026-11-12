@@ -7,7 +7,7 @@ import { deleteVisit, getVisit, insertVisit, listVisits, updateVisit } from "./v
 let db: Db;
 let place: Place;
 const input = (overrides: Partial<VisitInput> = {}): VisitInput => ({
-  placeId: place.id, visitedOn: "2026-11-01", reaction: "loved", occasion: "casual", dishes: ["dumplings"], note: null, ...overrides,
+  placeId: place.id, visitedOn: "2026-11-01", reaction: "loved", occasion: "casual", rating: null, dated: true, dishes: ["dumplings"], note: null, ...overrides,
 });
 
 beforeEach(async () => {

@@ -14,12 +14,15 @@ export const BAND_PRIOR: Record<Reaction, number> = { loved: 8.5, fine: 6, disli
 
 /** Spread of the band prior, in score points. Smaller keeps places closer to their band. */
 const PRIOR_SD = 1;
+/** Spread around a score the user gave outright (1-10): tighter, so comparisons move it less. */
+export const RATED_SD = 0.6;
 /** Score gap that makes one place about 73% likely to beat the other. */
 const SCALE = 1;
 const MAX_ITERATIONS = 5000;
 const TOLERANCE = 1e-7;
 
-export type FitItem = { id: string; reaction: Reaction };
+/** A place in the fit. `rating`, when given, replaces the band prior as its starting score. */
+export type FitItem = { id: string; reaction: Reaction; rating?: number | null };
 export type FitComparison = { winnerPlaceId: string; loserPlaceId: string };
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
@@ -31,22 +34,23 @@ const clamp = (x: number) => Math.min(10, Math.max(0, x));
  */
 export function fitScores(items: readonly FitItem[], comparisons: readonly FitComparison[]): Map<string, number> {
   const index = new Map(items.map((it, i) => [it.id, i]));
-  const prior = items.map((it) => BAND_PRIOR[it.reaction]);
+  const prior = items.map((it) => it.rating ?? BAND_PRIOR[it.reaction]);
+  const sd = items.map((it) => (it.rating == null ? PRIOR_SD : RATED_SD));
   const pairs = comparisons
     .map((c) => [index.get(c.winnerPlaceId), index.get(c.loserPlaceId)] as const)
     .filter((p): p is readonly [number, number] => p[0] !== undefined && p[1] !== undefined && p[0] !== p[1]);
 
-  // MM curvature bound per place: the prior's 1/sd^2 plus 1/(2 SCALE^2) per comparison it is in.
+  // MM curvature bound per place: its own prior's 1/sd^2 plus 1/(2 SCALE^2) per comparison it is in.
   const degree = items.map(() => 0);
   for (const [w, l] of pairs) {
     degree[w] += 1;
     degree[l] += 1;
   }
-  const bound = degree.map((d) => 1 / PRIOR_SD ** 2 + d / (2 * SCALE ** 2));
+  const bound = degree.map((d, i) => 1 / sd[i] ** 2 + d / (2 * SCALE ** 2));
 
   let s = [...prior];
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const grad = s.map((v, i) => -(v - prior[i]) / PRIOR_SD ** 2);
+    const grad = s.map((v, i) => -(v - prior[i]) / sd[i] ** 2);
     for (const [w, l] of pairs) {
       const push = (1 - sigmoid((s[w] - s[l]) / SCALE)) / SCALE;
       grad[w] += push;

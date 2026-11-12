@@ -2,7 +2,7 @@
 
 Every route the iOS app calls, taken from the route handlers in `app/api/**/route.ts` and the zod
 schemas in `lib/types.ts`, `lib/account/input.ts`, `lib/lodestar/trips.ts` and
-`components/lists/types.ts` (as of 2026-11-11). When the web changes, the handler wins over this
+`components/lists/types.ts` (as of 2026-11-11, including the rating flow). When the web changes, the handler wins over this
 file: re-read it and update this contract.
 
 Base URL: `https://forage.xanom.co` in production (planned), `http://localhost:3000` for `pnpm dev`.
@@ -83,10 +83,12 @@ Two limiters exist. On 429 show the message, re-enable the control, never retry 
 | `reset` | 10 | 15 min, per IP | reset |
 | `writes` | 300 | 15 min | visits POST/PATCH/DELETE, comparisons, want POST/DELETE, taste PUT, taste refresh |
 | `ai` | 40 | 15 min, per AI owner | every AI model call (recs rerank, Ask, taste refresh) |
-| `places` | 300 | 15 min | places search/nearby, place details' live part, geocode (per IP) |
-| `placesDaily` | 3000 | 24 h | places search/nearby, geocode (per IP) |
+| `places` | 300 | 15 min | places search/nearby (per IP with no session), rating deck (signed in or guest), place details' live part, geocode (per IP) |
+| `placesDaily` | 3000 | 24 h | places search/nearby (per IP with no session), rating deck (signed in or guest), geocode (per IP) |
 | `recs` | 120 | 15 min | recs, explore recs, Ask |
 | `lodestar` | 60 | 15 min | every Lodestar call, connect, the callback |
+| `guest` | 10 | 60 min, per IP | `POST /api/account/guest` when it creates a guest |
+| `deckAnon` | 60 | 15 min, per IP | `POST /api/rate/deck` with no session |
 
 2. **In-memory limiter** (`rateLimited` in `lib/api.ts`): per client IP per route, 60-second window,
    per server instance, so approximate. Used only by `ai-start` and `ai-complete` (10 per minute each).
@@ -169,11 +171,19 @@ Visit {
   visitedOn: string          // "YYYY-MM-DD"
   reaction: Reaction
   occasion: Occasion
+  rating: number | null      // the user's own score, whole 1–10, inside the reaction's band; null = band only
+  dated: boolean             // false when the user didn't say when they went (rating flow); visitedOn is then the day rated
   dishes: string[]           // each 1–100 chars, ≤ 20
   note: string | null        // ≤ 2000 chars
   createdAt: number
 }
 ```
+
+Rating bands (`RATING_BAND` in `lib/types.ts`): `disliked` 1–4, `fine` 5–7, `loved` 8–10. A rating
+outside its reaction's band is refused with 400 "That rating doesn't match the reaction.". With a
+rating, the place's starting score is the rating (spread 0.6) instead of the band prior (8.5 / 6 /
+3.5, spread 1), so with no comparisons the fitted score equals the rating. Lists show "Rated Nov 11"
+instead of a visit date when `dated` is false.
 
 ### 1.3 `PlaceScore`
 
@@ -215,7 +225,23 @@ LogResponse  = CompareStep & { visit: Visit }
 ```
 
 `opponent` is the next "Which did you like more?" question (null when done). `asked` is how many
-were answered so far. At most `MAX_COMPARISONS = 2` per visit.
+were answered so far. At most `MAX_COMPARISONS = 2` per visit. The opponent is always in the same
+occasion and the same reaction band, closest score first, never one already compared with this place.
+
+```ts
+CompareAnswer      = CompareStep & { id: number, subjectScore: number | null }   // POST /api/comparisons
+VisitEditResponse  = { visit: Visit, score: number | null }                      // PATCH /api/visits/{id}
+Progress           = { rated: number, firstPicksAt: 5, goal: 10 }
+DeckPlace          = { place: Place, distanceKm: number, guessedOccasion: Occasion, kind: string }
+```
+
+`Progress.rated` is the number of distinct places with at least one visit, across occasions. The
+UI copy: under 5, "2 of 5 · Rate 3 more to get picks"; 5–9, "6 of 10 · Picks get better as you
+rate"; 10 and up, hidden.
+
+### 1.7 `WantSource`
+
+`manual | rec | ask | import | lodestar | rate` (`rate` = Want to try from the rating deck).
 
 ---
 
@@ -224,21 +250,47 @@ were answered so far. At most `MAX_COMPARISONS = 2` per visit.
 Copy for the screens is the web's (`app/account`, `components/account`); on iOS say "Tap" for
 "Click" and "on this device" for "in this browser".
 
+### 2.0 Guests
+
+A visitor can rate before making an account. `POST /api/account/guest` (2.9), called right before
+the first write, makes a **guest**: a real user with no email or password, on the same `fg_session`
+cookie. Every route marked **Auth: session** works for a guest. Signing up from a guest session (2.2)
+turns that same user into an account, so nothing moves. Signing in from a guest session (2.3) moves
+the guest's places into the account and deletes the guest. A guest unseen for 30 days is deleted
+with everything it saved. An active guest's cookie is renewed (fresh 30 days) once it has less than
+23 days left, on any **Auth: session** call. A guest with 200 rated places must save an account
+before rating a new place (5.2).
+
 ### 2.1 `GET /api/account`
-**Auth:** none (signed out is a normal answer). `<what>` "account check".
-**Response `data`:** `{ user: { email: string, createdAt: number } | null }`.
-This is the only call that decides signed-in vs signed-out at launch (Lodestar's `session` state).
+**Auth:** none (signed out is a normal answer). `<what>` "account check". `cache-control: no-store`.
+**Response `data`:**
+
+```ts
+{ user: null }
+| { user: { email: string | null, guest: boolean, createdAt: number }, progress: Progress }
+```
+
+`email` is null only for a guest. This is the only call that decides signed-in, guest or signed-out
+at launch (Lodestar's `session` state).
 
 ### 2.2 `POST /api/account/register`
 **Body:** `{ email: string, password: string }` (email trimmed, lowercased, valid, ≤ 254; password 8–200).
-**Response `data`:** `{ user: { email: string } }`; sets `fg_session`.
+**Response `data`:** `{ user: { email: string }, upgraded: boolean }`; sets `fg_session`.
+`upgraded` is true when the request carried a guest session and that guest became this account (same
+id, everything kept, the guest's old cookie is replaced).
 **Errors:** 429 "Too many new accounts from here. Try again later." · 400 "Enter a valid email and a
 password of at least 8 characters." · 409 "An account with that email already exists. Sign in instead."
+(no guest session) · 409 "An account with that email already exists. Sign in to keep these places."
+(guest session; the guest is untouched, offer Sign in, which merges).
 **Limit:** `register`. `<what>` "sign-up".
 
 ### 2.3 `POST /api/account/login`
 **Body:** `{ email: string, password: string }` (password 1–200).
-**Response `data`:** `{ user: { email: string } }`; sets `fg_session`.
+**Response `data`:** `{ user: { email: string }, merged?: { visits: number } }`; sets `fg_session`.
+`merged` is present when the request carried a guest session: the guest's visits, comparisons, Want
+to try, skips, predictions and AI connections (where the account has none for that provider) moved
+into the account, its occasions were refitted, and the guest was deleted. Say "Added N places to
+your account." (count distinct places on the client if needed; `visits` counts visits).
 **Errors:** 429 "Too many attempts. Try again in 15 minutes." · 400 "Enter your email and password." ·
 401 "That email and password don't match an account."
 **Limit:** `login`. `<what>` "sign-in".
@@ -255,7 +307,7 @@ An AI connection saved to the account stays with the account. The web ignores fa
 **Errors:** 400 "Unknown action.". `<what>` "sign-out".
 
 ### 2.6 `DELETE /api/account`
-**Auth:** session. **Body:** `{ password: string }` (1–200).
+**Auth:** session. **Body:** `{ password: string }` (1–200); a guest sends `{}` (no password).
 **Response `data`:** `{}`. Deletes the account and everything saved with it, clears AI cookies and the session.
 **Errors:** 400 "Enter your password to delete your account." · 401 "That password isn't right.".
 `<what>` "account deletion". The web has this route; iOS needs it for App Store review (account deletion).
@@ -278,6 +330,17 @@ characters." · 400 "This reset link is no longer valid. Request a new one.". `<
 The reset link is an `https` URL, so until universal links exist (see ARCHITECTURE.md, Known gaps)
 Account offers "Have a reset link?" with a paste field; extract `token` from the pasted URL's query, or
 accept a bare token.
+
+---
+
+### 2.9 `POST /api/account/guest`
+**Auth:** none. **Body:** ignored (send `{}`). `<what>` "guest start".
+**Response `data`:** `{ user: { guest: boolean, email: string | null }, created: boolean }`.
+With a live session (guest or account) it answers with that user, `created: false`, and makes
+nothing. Otherwise it makes a guest, sets `fg_session` and answers `created: true`. Call it right
+before the first write in the rating flow (first Been, Want to try, Not been or reaction tap), never
+on launch, so a visitor who only looks makes no user.
+**Errors:** 429 "Too many new visitors from here. Try again later." (`guest` limit, only when creating).
 
 ---
 
@@ -373,7 +436,8 @@ Without AI everything works except Ask; recs simply have no `reason`.
 ## 4. Places
 
 ### 4.1 `GET /api/places`
-**Auth:** session. **Limits:** `places` and `placesDaily` (per account). `<what>` "place search".
+**Auth:** none needed. **Limits:** `places` and `placesDaily`, per account with a session, per IP
+without (the rating deck's search runs before the first write). `<what>` "place search".
 Two forms (query string):
 
 | Form | Params | Answer |
@@ -444,21 +508,31 @@ occasion) with the score (or null), the latest reaction, the latest `visitedOn`,
 | `visitedOn` | `"YYYY-MM-DD"` | valid ISO date |
 | `reaction` | `Reaction` | |
 | `occasion` | `Occasion` | |
+| `rating` | `Int?` | whole 1–10 inside the reaction's band (1.2); default `null` |
+| `dated` | `Bool?` | default `true`; the rating flow sends today's date with `false` |
 | `dishes` | `[String]`? | each trimmed 1–100, ≤ 20; default `[]` |
 | `note` | `String?` | trimmed, ≤ 2000; default `null` |
 
 **Response `data`:** `LogResponse` (`{ visit, score, opponent, asked }`). If `opponent` is non-null,
 ask "Which did you like more?" between the logged place and `opponent`, then call 5.4.
-**Errors:** 429 "Too many changes. Wait a few minutes and try again." · 404 as above · 400 zod message.
+**Errors:** 429 "Too many changes. Wait a few minutes and try again." · 404 as above · 400 zod message
+(400 "That rating doesn't match the reaction." for an out-of-band rating) · 403 "Save your places to
+keep rating." (a guest with 200 rated places, adding a new one).
+Logging a visit at a place the user marked Not been deletes that skip.
+
+The rating flow sends `{ placeId, visitedOn: today, reaction, occasion: guessedOccasion, rating: null, dated: false }`
+on the reaction tap, then `PATCH` with `{ rating }` for the optional fine-tune.
 
 Quick start (`/log/quick` on the web) is just repeated `POST /api/visits` with `reaction: "loved"`,
 today's date, the chosen occasion, and no comparisons asked.
 
 ### 5.3 `PATCH /api/visits/{id}` and `DELETE /api/visits/{id}`
 **Auth:** session. **Limit:** `writes`.
-- PATCH body: any subset of `{ visitedOn, reaction, occasion, dishes, note }` (same rules; `placeId`
-  can't change). **Response `data`:** `{ visit: Visit }`. Refits the old and new occasion.
-  `<what>` "visit edit".
+- PATCH body: any subset of `{ visitedOn, reaction, occasion, rating, dated, dishes, note }` (same
+  rules; `placeId` can't change). Fields left out keep their value. The band check runs on the
+  merged visit, so changing `reaction` on a rated visit needs a matching `rating` (or `rating: null`)
+  in the same PATCH. **Response `data`:** `VisitEditResponse` (`{ visit, score }`, the place's score in
+  its occasion now). Refits the old and new occasion. `<what>` "visit edit".
 - DELETE body: none (send `{}` or nothing; it is not read). **Response `data`:** `{}`. Refits the
   occasion. `<what>` "visit delete".
 
@@ -476,10 +550,27 @@ today's date, the chosen occasion, and no comparisons asked.
 ```
 
 `next` is optional; `asked` (1–2) is how many questions are now answered including this one.
-**Response `data`:** `CompareStep` (`{ score, opponent, asked }`): the subject's score now and the next
-opponent, or `opponent: null` when done. Without `next`, `opponent` is null.
+**Response `data`:** `CompareAnswer` (`{ id, score, subjectScore, opponent, asked }`): `id` of the saved
+answer (for undo, 5.7), the subject's score now (`subjectScore`, equal to `score`), and the next
+opponent, or `opponent: null` when done. Without `next`, `score`, `subjectScore` and `opponent` are
+null. To show "now 8.7" after the last question the client wants, send `next` with the real `asked`
+and ignore `opponent` (the rating flow asks at most 1 per place while rated < 10).
 **Errors:** 400 "A place can't be compared with itself." · 400 "Log both places for this occasion
 before comparing them." · 429 as above.
+
+### 5.6 `GET /api/comparisons/next?placeId={uuid}&occasion={Occasion}&asked={0..2}`
+**Auth:** session. `<what>` "next comparison". `cache-control: no-store`.
+**Response `data`:** `CompareStep` (`{ score, opponent, asked }`) for the place in that occasion; after
+an undo or a reload. `opponent` is null when `asked` is 2 or no same-band place is left.
+**Errors:** 400 "Give a place, an occasion and how many were asked.".
+
+### 5.7 `DELETE /api/comparisons/{id}[?placeId={uuid}]`
+**Auth:** session. **Limit:** `writes`. `<what>` "comparison undo". Body not read (send `{}`).
+Deletes one of the user's own answers and refits its occasion.
+**Response `data`:** `{ score: number | null }`: the score of `placeId` in that occasion afterwards
+(null without `placeId`).
+**Errors:** 404 "That comparison wasn't found." (bad id, another user's, or gone) · 400 "That place
+id isn't valid." · 429 as above.
 
 ### 5.5 `GET /api/feedback?placeId={uuid}`
 **Auth:** session. `<what>` "feedback". `cache-control: no-store`.
@@ -490,6 +581,65 @@ after logging a visit to a place that was recommended.
 
 ---
 
+## 5A. Rating flow (rate places near you)
+
+Design: `docs/superpowers/specs/2026-11-11-rate-nearby-and-web-cleanup.md`, Part 1. Step A shows
+the deck (5A.1) and records Been / Want to try (6.2, `source: "rate"`) / Not been (5A.2). Step B is
+`POST /api/visits` plus an optional `PATCH` (5.2, 5.3). Step C is 5.4. Undo map:
+
+| Action | Undo call |
+|---|---|
+| Rated (visit created) | `DELETE /api/visits/{id}` |
+| Fine-tune or occasion change | `PATCH /api/visits/{id}` with the previous values |
+| Comparison answered | `DELETE /api/comparisons/{id}` (5.7) |
+| Want to try | `DELETE /api/want {placeId}` |
+| Not been | `DELETE /api/rate/skips {placeId}` (5A.2) |
+
+### 5A.1 `POST /api/rate/deck`
+**Auth:** none needed (works signed out, as a guest or signed in). It writes nothing; it is a POST
+only because `exclude` can be long. **Limits:** `deckAnon` per IP with no session, else `places` and
+`placesDaily` per user. Byte cap 40,000. `<what>` "rating deck". `cache-control: no-store`. Use the
+`recs` timeout (the nearby lookup may fetch map tiles).
+**Body:**
+
+| Field | Type | Rule |
+|---|---|---|
+| `lat`, `lng` | Double | −90…90, −180…180 |
+| `radiusKm` | Double? | 0.2–3, default 1.5 |
+| `limit` | Int? | 6–48, default 24 |
+| `exclude` | `[UUID]`? | ≤ 500, default `[]`: ids already shown this session (for "Show more places") |
+
+**Response `data`:**
+
+```ts
+{ places: DeckPlace[], hasMore: boolean, source: "cache" | "overpass" | "stale" | "photon" | "stored", progress: Progress }
+```
+
+Places come from the free nearby search (OSM, tile cached; no Google). Left out: `exclude`, and for
+a user, places they rated, have on Want to try, or marked Not been in the last 180 days. Order is
+"most likely you've been": `0.6 · e^(−km/0.6) + 0.4 · known`, where `known` adds 0.35 for an OSM
+brand or wikidata tag, 0.15 for opening hours, 0.15 for a website, 0.1 for a cuisine, and
+`min(0.25, 0.05·n)` when n ≥ 3 Forage users logged the place. No more than 3 tiles in a row share an
+amenity. `kind` is the first cuisine or else the amenity, title case ("Cafe", "Fast Food").
+`guessedOccasion`: the place's single tagged occasion; else `special` at price 4; else `quick` for
+fast food, food court, ice cream, cafe, bakery; `night_out` for bar, pub, biergarten; else `casual`.
+**Errors:** 400 zod message · 429 "Too many requests. Wait a few minutes and try again.".
+
+### 5A.2 `POST /api/rate/skips` and `DELETE /api/rate/skips`
+**Auth:** session (call 2.9 first). **Limit:** `writes`. **Body:** `{ placeId: UUID }`.
+- POST ("Not been"): **Response `data`:** `{ skip: { placeId: string, createdAt: number } }`. Skipping
+  twice keeps the first. Keeps the place out of the deck for 180 days. 404 "That place wasn't
+  found.". `<what>` "skip".
+- DELETE (undo): **Response `data`:** `{ removed: boolean }`. `<what>` "skip undo".
+
+### 5A.3 `GET /api/rate/progress`
+**Auth:** none needed. `<what>` "progress". `cache-control: no-store`.
+**Response `data`:** `Progress`; `rated: 0` with no session. Use it at launch to decide whether to
+show the rating flow (rated < 10 and not dismissed on this device), and for the Near me prompt card.
+Under 5 rated, Near me shows "Rate 5 places to get picks." and doesn't call `/api/recs`.
+
+---
+
 ## 6. Want to try
 
 ### 6.1 `GET /api/want`
@@ -497,7 +647,7 @@ after logging a visit to a place that was recommended.
 
 ### 6.2 `POST /api/want`
 **Auth:** session. **Limit:** `writes`. **Body:** `{ placeId: UUID, source?: WantSource }` (default
-`"manual"`; use `"rec"` from Near me/Explore, `"ask"` from Ask). Adding twice keeps the first entry.
+`"manual"`; use `"rec"` from Near me/Explore, `"ask"` from Ask, `"rate"` from the rating deck). Adding twice keeps the first entry.
 **Response `data`:** `{ item: WantItem }`. **Errors:** 404 "That place wasn't found." · 429 as above.
 
 ### 6.3 `DELETE /api/want`

@@ -22,6 +22,10 @@ export const LIMITS = {
   placesDaily: [3000, 24 * 60 * MINUTE],
   recs: [120, 15 * MINUTE],
   lodestar: [60, 15 * MINUTE],
+  // Guests made per IP. Above register because shared networks and cellular phones share IPs.
+  guest: [10, 60 * MINUTE],
+  // Rating deck loads with no session yet, per IP.
+  deckAnon: [60, 15 * MINUTE],
 } as const;
 
 export type LimitName = keyof typeof LIMITS;

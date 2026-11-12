@@ -21,7 +21,7 @@ export function POST(req: Request) {
     if (!(await allow("forgotEmail", body.data.email))) return requested();
     const db = await getDb();
     const user = await findUserByEmail(db, body.data.email);
-    if (!user) return requested();
+    if (!user?.email) return requested();
     if (!(await allow("forgotSentDaily", "all"))) {
       console.error("[forage] the day's reset emails are used up, so one was not sent");
       return requested();

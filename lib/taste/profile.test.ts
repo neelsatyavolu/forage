@@ -13,7 +13,7 @@ const place = (id: string, cuisine: string[], tags: Place["tags"] = {}, priceLev
 });
 
 const visit = (placeId: string, reaction: Visit["reaction"], visitedOn = "2026-11-01", extra: Partial<Visit> = {}): Visit => ({
-  id: `${placeId}-${visitedOn}`, userId: USER_A, placeId, visitedOn, reaction, occasion: "casual", dishes: [], note: null, createdAt: 0, ...extra,
+  id: `${placeId}-${visitedOn}`, userId: USER_A, placeId, visitedOn, reaction, occasion: "casual", rating: null, dated: true, dishes: [], note: null, createdAt: 0, ...extra,
 });
 
 const item = (p: Place, visits: Visit[], scores: HistoryItem["scores"] = {}): HistoryItem => ({ place: p, visits, scores });

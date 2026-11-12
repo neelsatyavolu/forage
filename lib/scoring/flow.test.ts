@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { addPlace, freshDb, USER_A, USER_B } from "@/test/db";
 import { listScores } from "../db/scores";
 import type { Reaction } from "../types";
-import { answerComparison, editVisit, logVisit, removeVisit } from "./flow";
+import { addSkip, recentSkips } from "../db/skips";
+import { answerComparison, editVisit, logVisit, removeVisit, step, undoComparison } from "./flow";
 
-const visit = (placeId: string, reaction: Reaction, occasion: "casual" | "special" = "casual") => ({ placeId, visitedOn: "2026-11-10", reaction, occasion, dishes: [], note: null });
+const visit = (placeId: string, reaction: Reaction, occasion: "casual" | "special" = "casual", rating: number | null = null) => ({ placeId, visitedOn: "2026-11-10", reaction, occasion, rating, dated: true, dishes: [], note: null });
 
 async function setup() {
   const db = await freshDb();
@@ -59,5 +60,52 @@ describe("logging flow", () => {
     expect(await listScores(db, USER_A)).toEqual([]);
     await expect(removeVisit(db, USER_A, v.id, 4)).rejects.toMatchObject({ status: 404 });
     await expect(editVisit(db, USER_B, v.id, {}, 4)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("saves a rating as the starting score and forgets a skip at that place", async () => {
+    const { db, places: [a] } = await setup();
+    await addSkip(db, USER_A, a.id, 1);
+    const logged = await logVisit(db, USER_A, { ...visit(a.id, "loved", "casual", 9), dated: false }, 2);
+    expect(logged.score).toBe(9);
+    expect(logged.visit).toMatchObject({ rating: 9, dated: false });
+    expect(await recentSkips(db, USER_A, 3)).toEqual(new Set());
+  });
+
+  it("refuses a rating outside the reaction's band, on log and on edit", async () => {
+    const { db, places: [a] } = await setup();
+    await expect(logVisit(db, USER_A, visit(a.id, "fine", "casual", 9), 1)).rejects.toMatchObject({ status: 400 });
+    const { visit: v } = await logVisit(db, USER_A, visit(a.id, "loved", "casual", 9), 1);
+    await expect(editVisit(db, USER_A, v.id, { reaction: "fine" }, 2)).rejects.toMatchObject({ status: 400 });
+    const edited = await editVisit(db, USER_A, v.id, { reaction: "fine", rating: 6 }, 3);
+    expect(edited).toMatchObject({ visit: { reaction: "fine", rating: 6 }, score: 6 });
+  });
+
+  it("keeps fields a patch leaves out", async () => {
+    const { db, places: [a] } = await setup();
+    const { visit: v } = await logVisit(db, USER_A, { ...visit(a.id, "loved"), dishes: ["dumplings"], note: "good" }, 1);
+    const { visit: after } = await editVisit(db, USER_A, v.id, { rating: 8 }, 2);
+    expect(after).toMatchObject({ dishes: ["dumplings"], note: "good", rating: 8 });
+  });
+
+  it("returns the answer's id and the subject's score, and undoes it", async () => {
+    const { db, places: [a, b] } = await setup();
+    await logVisit(db, USER_A, visit(a.id, "loved"), 1);
+    await logVisit(db, USER_A, visit(b.id, "loved"), 2);
+    const answer = await answerComparison(db, USER_A, { winnerPlaceId: b.id, loserPlaceId: a.id, occasion: "casual" }, { subjectPlaceId: b.id, asked: 2 }, 3);
+    expect(answer.id).toBeGreaterThan(0);
+    expect(answer.subjectScore).toBeGreaterThan(8.5);
+    expect(answer.subjectScore).toBe(answer.score);
+    expect(answer.opponent).toBeNull();
+    await expect(undoComparison(db, USER_B, answer.id, b.id, 4)).rejects.toMatchObject({ status: 404 });
+    expect(await undoComparison(db, USER_A, answer.id, b.id, 4)).toEqual({ score: 8.5 });
+    await expect(undoComparison(db, USER_A, answer.id, null, 5)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("step offers the next opponent until asked reaches the limit", async () => {
+    const { db, places: [a, b] } = await setup();
+    await logVisit(db, USER_A, visit(a.id, "loved"), 1);
+    await logVisit(db, USER_A, visit(b.id, "loved"), 2);
+    expect((await step(db, USER_A, b.id, "casual", 1)).opponent?.id).toBe(a.id);
+    expect(await step(db, USER_A, b.id, "casual", 2)).toMatchObject({ score: 8.5, opponent: null, asked: 2 });
   });
 });
