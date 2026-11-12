@@ -187,7 +187,7 @@ struct OtherModelTests {
     }
 
     @Test func resetTokenFromLink() {
-        let token = "abcDEF123_-abcDEF123_-abcDEF123_-abcDEF1234"
+        let token = "abcDEF123_-abcDEF123_-abcDEF123_-abcDEF1234" // gitleaks:allow (fake test token)
         #expect(ResetRequest.token(fromLink: "https://forage.xanom.co/reset?token=\(token)") == token)
         #expect(ResetRequest.token(fromLink: "  \(token)\n") == token)
         #expect(ResetRequest.token(fromLink: "https://forage.xanom.co/reset") == nil)
