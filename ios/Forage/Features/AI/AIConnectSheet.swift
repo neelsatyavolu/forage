@@ -25,7 +25,7 @@ struct AIConnectSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.buttonStyle(.forage(.quiet))
+                    Button("Cancel") { dismiss() }.fixedSize()
                 }
             }
         }

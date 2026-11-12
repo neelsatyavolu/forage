@@ -96,6 +96,7 @@ private struct AccountSignedInView: View {
             }
             .rise()
             AccountAISection()
+            LodestarAccountSection()
             AccountSessionSection(open: open)
             SectionRule(label: "Delete account") {
                 LinkRow(title: "Delete my account",

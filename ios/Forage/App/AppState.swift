@@ -84,6 +84,9 @@ final class AppState {
     func bootstrap() async {
         await refreshAccount()
         await refreshAIStatus()
+        #if DEBUG
+        await applyDebugLaunchArguments()
+        #endif
     }
 
     /// `GET /api/account`. A failure keeps the previous state (a cookie may still be valid).
