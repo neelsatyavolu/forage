@@ -61,8 +61,9 @@ describe("refillTiles", () => {
       return ok();
     });
     const result = await refillTiles(deps(db, overpass, () => now), TILES, { perTile: true });
-    expect(overpass).toHaveBeenCalledTimes(3);
-    expect(result.marked).toHaveLength(3);
+    // 45 s budget, 10 s per request, at least 1 s left to start one: five requests.
+    expect(overpass).toHaveBeenCalledTimes(5);
+    expect(result.marked).toHaveLength(5);
   });
 
   it("drops a refill of tiles already being refilled in this process", async () => {

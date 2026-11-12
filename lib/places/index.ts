@@ -51,7 +51,7 @@ export async function nearbyPlaces(lat: number, lng: number, radiusKm: number): 
 }
 
 /** A background refill gives one mirror at most this long before trying the next. */
-const REFILL_PER_MIRROR_MS = 15_000;
+const REFILL_PER_MIRROR_MS = 30_000;
 
 /** Live Google details for a stored place, or null without a key or a match. Only for a user opening one place, never for lists or recs. */
 export async function placeLiveDetails(placeId: string): Promise<LiveDetails | null> {

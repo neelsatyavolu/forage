@@ -11,7 +11,7 @@ import { tilesBox } from "./tiles";
 // claim in osm_tiles that lasts CLAIM_TTL_MS. If the whole box comes back cut
 // short (a dense area), each tile is fetched on its own so each can be marked.
 
-export const REFILL_BUDGET_MS = 25_000;
+export const REFILL_BUDGET_MS = 45_000;
 export const CLAIM_TTL_MS = 60_000;
 /** Below this much budget left, another per-tile request isn't started. */
 const MIN_TILE_MS = 1_000;
