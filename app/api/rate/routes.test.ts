@@ -6,7 +6,7 @@ import type { Place } from "@/lib/types";
 // Route-level checks of the rating flow: a visitor with no account loads the
 // deck, becomes a guest on the first write, rates, compares, undoes, and saves.
 
-process.env.FORAGE_SECRET = "route-test-secret-0123456789";
+process.env.FORAGE_SECRET = "route-test-secret-0123456789"; // gitleaks:allow (test-only secret)
 
 vi.mock("next/headers", async () => {
   const { cookieStore, state } = await import("@/test/routes");
