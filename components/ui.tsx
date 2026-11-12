@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import Link from "next/link";
+import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react";
 
 // Primitives from ~/DESIGN.md (Ledger). Buttons are 36px (44px on touch), 4px
 // radius. Primary is ink-on-canvas, accent is the page's single most important
@@ -6,18 +7,39 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "accent" | "ghost" | "quiet" | "danger"; size?: "md" | "sm" };
 
+type Variant = NonNullable<ButtonProps["variant"]>;
+type Size = NonNullable<ButtonProps["size"]>;
+
+const BUTTON_BASE =
+  "inline-flex items-center justify-center gap-2 rounded-sm font-medium whitespace-nowrap cursor-pointer disabled:cursor-default disabled:text-stone pointer-coarse:min-h-11";
+const BUTTON_SIZE: Record<Size, string> = { sm: "h-8 px-3 text-[13px]", md: "h-9 px-4 text-[14px]" };
+const BUTTON_VARIANT: Record<Variant, string> = {
+  primary: "bg-primary text-primary-on hover:bg-primary-hover disabled:hover:bg-primary",
+  accent: "bg-accent text-accent-on hover:bg-accent-hover disabled:hover:bg-accent",
+  ghost: "border border-hairline-strong text-ink hover:bg-hover disabled:border-hairline disabled:hover:bg-transparent",
+  quiet: "text-mute hover:text-ink",
+  danger: "border border-hairline-strong text-danger hover:bg-hover",
+};
+const buttonClass = (variant: Variant, size: Size, extra: string) => `${BUTTON_BASE} ${BUTTON_SIZE[size]} ${BUTTON_VARIANT[variant]} ${extra}`;
+
 export function Button({ variant = "ghost", size = "md", className = "", ...rest }: ButtonProps) {
-  const base =
-    "inline-flex items-center justify-center gap-2 rounded-sm font-medium whitespace-nowrap cursor-pointer disabled:cursor-default disabled:text-stone pointer-coarse:min-h-11";
-  const sizes = size === "sm" ? "h-8 px-3 text-[13px]" : "h-9 px-4 text-[14px]";
-  const variants = {
-    primary: "bg-primary text-primary-on hover:bg-primary-hover disabled:hover:bg-primary",
-    accent: "bg-accent text-accent-on hover:bg-accent-hover disabled:hover:bg-accent",
-    ghost: "border border-hairline-strong text-ink hover:bg-hover disabled:border-hairline disabled:hover:bg-transparent",
-    quiet: "text-mute hover:text-ink",
-    danger: "border border-hairline-strong text-danger hover:bg-hover",
-  }[variant];
-  return <button className={`${base} ${sizes} ${variants} ${className}`} {...rest} />;
+  return <button className={buttonClass(variant, size, className)} {...rest} />;
+}
+
+/** A link that looks like a Button, for actions that go to another page. */
+export function ButtonLink({ variant = "ghost", size = "md", className = "", ...rest }: ComponentProps<typeof Link> & { variant?: Variant; size?: Size }) {
+  return <Link className={buttonClass(variant, size, className)} {...rest} />;
+}
+
+const SCORE_SIZE = { sm: "text-[14px]", md: "text-[20px]", lg: "text-[32px]" } as const;
+
+/** A score out of 10 in mono, one decimal. `muted` draws it in mute (rough, few places rated). */
+export function ScoreText({ value, size = "md", muted = false, title, className = "" }: { value: number; size?: keyof typeof SCORE_SIZE; muted?: boolean; title?: string; className?: string }) {
+  return (
+    <span className={`font-mono leading-none tabular-nums ${SCORE_SIZE[size]} ${muted ? "text-mute" : "text-ink"} ${className}`} aria-label={`${value.toFixed(1)} out of 10`} title={title}>
+      {value.toFixed(1)}
+    </span>
+  );
 }
 
 export const inputClass =

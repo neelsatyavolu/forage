@@ -20,6 +20,8 @@ const isActive = (pathname: string, href: string) => (href === "/" ? pathname ==
 
 export function Nav() {
   const pathname = usePathname();
+  // The rating flow is full screen with its own Close.
+  if (pathname === "/rate") return null;
   return (
     <header className="sticky top-0 z-20 h-14 border-b border-hairline bg-canvas">
       <div className="mx-auto flex h-full max-w-[1120px] items-center gap-6 px-6 max-[720px]:gap-3 max-[720px]:px-4">

@@ -75,3 +75,43 @@ export function DeleteSection({ onDeleted }: { onDeleted: () => void }) {
     </SectionRule>
   );
 }
+
+/** A guest's delete: no password to check, so a second tap confirms. */
+export function GuestDeleteSection({ onDeleted }: { onDeleted: () => void }) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await del("/api/account", {});
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That didn't work. Try again.");
+      setBusy(false);
+    }
+  };
+  return (
+    <SectionRule label="Delete these places">
+      <p className="max-w-[60ch] text-body">Deletes every place you rated or saved on this browser. This can&apos;t be undone.</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {confirm ? (
+          <>
+            <Button variant="danger" onClick={remove} disabled={busy}>
+              {busy ? "Deleting…" : "Yes, delete them"}
+            </Button>
+            <Button variant="quiet" onClick={() => setConfirm(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <Button variant="danger" onClick={() => setConfirm(true)}>
+            Delete these places
+          </Button>
+        )}
+      </div>
+      {error && <p className="mt-2 font-mono text-[12px] text-danger">{error}</p>}
+    </SectionRule>
+  );
+}

@@ -8,7 +8,7 @@ import { post } from "@/lib/client";
 import { OCCASION_LABEL, type Occasion, type Place } from "@/lib/types";
 import { OCCASION_OPTIONS, today } from "./options";
 import { PlaceSearch } from "./place-search";
-import { Segmented } from "./segmented";
+import { Segmented } from "@/components/segmented";
 
 type Added = { place: Place; occasion: Occasion };
 

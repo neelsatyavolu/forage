@@ -38,6 +38,9 @@ const REFUSED: Record<number, string> = {
   3: "Finding your location took too long. Pick a place instead.",
 };
 
+/** How a spot reads after "near": "you" for the device's location, else its name. */
+export const nearLabel = (spot: Spot): string => (spot.label === "Your location" ? "you" : spot.label);
+
 /** "37.77, -122.42" typed by hand, or null. */
 export function parseLatLng(text: string): Spot | null {
   const m = text.trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/);
@@ -47,8 +50,22 @@ export function parseLatLng(text: string): Spot | null {
   return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng, label: `${lat.toFixed(4)}, ${lng.toFixed(4)}` } : null;
 }
 
-/** A failed fix keeps the spot already shown and says why in `notice`. */
-export function useLocation(): { state: LocationState; notice: string | null; locate: () => void; choose: (spot: Spot) => void } {
+/** True when the browser already allows location for this site, so asking shows no prompt. */
+async function alreadyAllowed(): Promise<boolean> {
+  try {
+    return (await navigator.permissions.query({ name: "geolocation" })).state === "granted";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A failed fix keeps the spot already shown and says why in `notice`.
+ * `prompt: false` never shows the browser's location prompt on its own: it
+ * starts from the remembered spot and only refreshes it when location is
+ * already allowed. The caller asks with `locate()` after saying why.
+ */
+export function useLocation({ prompt = true }: { prompt?: boolean } = {}): { state: LocationState; notice: string | null; locate: () => void; choose: (spot: Spot) => void } {
   const [state, setState] = useState<LocationState>({ status: "idle" });
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -81,8 +98,13 @@ export function useLocation(): { state: LocationState; notice: string | null; lo
     // Start from the last spot; a fresh fix replaces it when location is allowed.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (last) setState({ status: "ready", spot: last });
-    locate();
-  }, [locate]);
+    if (prompt) locate();
+    else
+      void alreadyAllowed().then((ok) => {
+        if (ok) locate();
+        else if (!last) setState({ status: "unavailable", message: "" });
+      });
+  }, [locate, prompt]);
 
   return { state, notice, locate, choose };
 }

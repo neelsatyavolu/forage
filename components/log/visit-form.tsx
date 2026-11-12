@@ -7,7 +7,7 @@ import { post } from "@/lib/client";
 import type { Occasion, Place, Reaction } from "@/lib/types";
 import { OCCASION_OPTIONS, parseDishes, REACTION_OPTIONS, today } from "./options";
 import { PlaceText } from "./place-search";
-import { Segmented } from "./segmented";
+import { Segmented } from "@/components/segmented";
 
 /** Reaction, occasion, date, dishes and a note for one place. Calls onLogged with the server's answer. */
 export function VisitForm({ place, onLogged, onChangePlace }: { place: Place; onLogged: (r: LogResponse) => void; onChangePlace: () => void }) {

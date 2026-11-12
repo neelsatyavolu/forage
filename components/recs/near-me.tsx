@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { RecList } from "@/components/explore/rec-list";
-import { Segmented } from "@/components/log/segmented";
+import { Segmented } from "@/components/segmented";
 import { post } from "@/lib/client";
 import type { Rec } from "@/lib/types";
+import { RatePrompt } from "@/components/rate/rate-prompt";
+import { FIRST_PICKS_AT } from "@/lib/types";
 import { useAccount } from "../account/use-account";
 import { EmptyState, SectionRule } from "../ui";
 import { LocationBar } from "./location-bar";
@@ -30,7 +32,8 @@ export function NearMe() {
   const [filter, setFilter] = useState<Filter>("new");
   const [load, setLoad] = useState<Load>({ status: "idle" });
   const spot = location.status === "ready" ? location.spot : null;
-  const signedIn = account.status === "signed-in";
+  const progress = account.status === "signed-in" ? account.progress : { rated: 0, firstPicksAt: FIRST_PICKS_AT, goal: 10 as const };
+  const signedIn = account.status === "signed-in" && progress.rated >= FIRST_PICKS_AT;
 
   useEffect(() => {
     if (!signedIn || !spot) return;
@@ -47,16 +50,18 @@ export function NearMe() {
   }, [signedIn, spot?.lat, spot?.lng, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (account.status === "loading") return <div className="skeleton h-40 rounded-sm" aria-label="Loading" />;
-  if (account.status === "signed-out")
+  if (!signedIn)
     return (
-      <EmptyState action={<Link href="/account" className="inline-flex h-9 items-center rounded-sm border border-hairline-strong px-4 text-[14px] font-medium hover:bg-hover pointer-coarse:min-h-11">Sign in</Link>}>
-        Sign in to get picks based on the places you have eaten.
-      </EmptyState>
+      <>
+        <RatePrompt progress={{ ...progress, firstPicksAt: FIRST_PICKS_AT }} />
+        <EmptyState>Rate {FIRST_PICKS_AT} places to get picks.</EmptyState>
+      </>
     );
 
   const meta = load.status === "ready" ? `${load.recs.length} ${load.recs.length === 1 ? "pick" : "picks"}` : undefined;
   return (
     <>
+      <RatePrompt progress={{ ...progress, firstPicksAt: FIRST_PICKS_AT }} />
       <LocationBar state={location} notice={notice} onLocate={locate} onChoose={choose} />
       <SectionRule label="Picks" meta={meta}>
         <div className="mb-8">
