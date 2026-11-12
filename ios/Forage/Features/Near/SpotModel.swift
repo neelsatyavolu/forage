@@ -17,21 +17,25 @@ final class SpotModel {
     private(set) var state: State = .idle
     private(set) var notice: String?
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var askedForFix = false
 
     private let fix: @MainActor () async -> LatLng?
     private let isDenied: @MainActor () -> Bool
+    private let isAllowed: @MainActor () -> Bool
     private let defaults: UserDefaults
 
     init(fix: @escaping @MainActor () async -> LatLng?,
          isDenied: @escaping @MainActor () -> Bool,
+         isAllowed: @escaping @MainActor () -> Bool = { false },
          defaults: UserDefaults = .standard) {
         self.fix = fix
         self.isDenied = isDenied
+        self.isAllowed = isAllowed
         self.defaults = defaults
     }
 
     convenience init(location: LocationService) {
-        self.init(fix: { await location.requestFix() }, isDenied: { location.isDenied })
+        self.init(fix: { await location.requestFix() }, isDenied: { location.isDenied }, isAllowed: { location.isAllowed })
     }
 
     var spot: NearSpot? {
@@ -47,15 +51,25 @@ final class SpotModel {
     /// The message under the bar: a failed fix, or why there is no spot at all.
     var message: String? {
         if let notice { return notice }
-        if case .unavailable(let message) = state { return message }
+        if case .unavailable(let message) = state, !message.isEmpty { return message }
         return nil
     }
 
-    /// Once per screen: show the remembered spot, then try for a fresh fix.
-    func start() async {
-        guard !started else { return }
-        started = true
-        if let last = NearSpotMemory.load(from: defaults) { state = .ready(last) }
+    /// Once per screen: show the remembered spot, then try for a fresh fix. With `prompt: false`
+    /// it never shows the location prompt on its own: it keeps the remembered spot (or offers the
+    /// city search) and only asks for a fix when location is already allowed. Call again with
+    /// `prompt: true` once the screen needs a location.
+    func start(prompt: Bool = true) async {
+        if !started {
+            started = true
+            if let last = NearSpotMemory.load(from: defaults) { state = .ready(last) }
+        }
+        guard !askedForFix else { return }
+        guard prompt || isAllowed() else {
+            if spot == nil { state = .unavailable("") }
+            return
+        }
+        askedForFix = true
         await locate()
     }
 

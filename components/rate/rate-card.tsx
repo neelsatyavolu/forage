@@ -113,7 +113,8 @@ export function RateCard({ place, kind, distanceKm, occasion, state, busy, occas
         </div>
       )}
 
-      {state && <Details busy={busy} onSave={onDetails} />}
+      {/* Keyed by place so an open form and typed text never carry over to the next place. */}
+      {state && <Details key={place.id} busy={busy} onSave={onDetails} />}
     </div>
   );
 }

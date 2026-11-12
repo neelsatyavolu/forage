@@ -29,7 +29,10 @@ export function useRateFlow() {
   const [undo, setUndo] = useState<UndoEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** A message under the rate card, such as "Details saved". */
   const [notice, setNotice] = useState<string | null>(null);
+  /** The new score after a head-to-head answer; while set, that question is answered and locked. */
+  const [scored, setScored] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [who, setWho] = useState<Who>({ kind: "loading" });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -71,6 +74,7 @@ export function useRateFlow() {
   function advance(from: number, q: readonly Candidate[] = queue, r: Readonly<Record<string, Rated>> = rated) {
     const ahead = nextUnrated(q, r, from + 1);
     setNotice(null);
+    setScored(null);
     if (ahead === -1) setStep("finish");
     else {
       setIndex(ahead);
@@ -155,8 +159,10 @@ export function useRateFlow() {
         opponent = (await call.nextOpponent(current.place.id, r.occasion, r.asked)).opponent;
         setOne(current.place.id, (x) => ({ ...x, opponent, stale: false }));
       }
-      if (opponent) setStep("compare");
-      else advance(index);
+      if (!opponent) return advance(index);
+      setNotice(null);
+      setScored(null);
+      setStep("compare");
     });
 
   /** W or S on a place not rated yet: Want to try or Not been instead, then the next place. */
@@ -174,6 +180,7 @@ export function useRateFlow() {
 
   const back = () => {
     setNotice(null);
+    setScored(null);
     if (step === "compare") return setStep("rate");
     if (step === "finish") return setStep(queue.length ? "rate" : "pick");
     if (index > 0) setIndex(index - 1);
@@ -193,10 +200,10 @@ export function useRateFlow() {
       const updated: Rated = { ...r, score, asked, opponent: asked < r.limit ? res.opponent : null };
       setRated((all) => ({ ...all, [subject.id]: updated }));
       setUndo((u) => pushUndo(u, { kind: "compare", id: res.id, placeId: subject.id, occasion: r.occasion, index, askedBefore: r.asked }));
-      if (score !== null) setNotice(`${subject.name} is now ${score.toFixed(1)}`);
+      if (score !== null) setScored(`${subject.name} is now ${score.toFixed(1)}`);
       const i = index;
       timer.current = setTimeout(() => {
-        if (updated.opponent) setNotice(null);
+        if (updated.opponent) setScored(null);
         else advance(i, queue, { ...rated, [subject.id]: updated });
       }, SCORE_NOTICE_MS);
     });
@@ -216,6 +223,7 @@ export function useRateFlow() {
       const e = popped.entry;
       if (timer.current) clearTimeout(timer.current);
       setNotice(null);
+      setScored(null);
       const at = (placeId: string) => queue.findIndex((c) => c.place.id === placeId);
       switch (e.kind) {
         case "want":
@@ -257,7 +265,7 @@ export function useRateFlow() {
     });
 
   return {
-    step, setStep, index, queue, marks, rated, undo, busy, error, notice, progress, who, current, currentRated,
+    step, setStep, index, queue, marks, rated, undo, busy, error, notice, scored, progress, who, current, currentRated,
     toggleBeen, mark, start, react, fineTune, setOccasion, saveDetails, next, instead, back, choose, tooTough, undoLast,
     refreshAccount,
   };

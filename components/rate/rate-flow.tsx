@@ -116,7 +116,7 @@ export function RateFlow() {
           </div>
         ) : f.step === "compare" && f.current && f.currentRated?.opponent ? (
           <div className="max-w-[720px]">
-            <ComparePair subject={f.current.place} opponent={f.currentRated.opponent} occasion={f.currentRated.occasion} busy={f.busy} notice={f.notice} onPick={f.choose} onTooTough={f.tooTough} />
+            <ComparePair subject={f.current.place} opponent={f.currentRated.opponent} occasion={f.currentRated.occasion} busy={f.busy} notice={f.scored} onPick={f.choose} onTooTough={f.tooTough} />
           </div>
         ) : (
           <div className="max-w-[720px] space-y-12">
@@ -233,7 +233,7 @@ function handleKey(e: KeyboardEvent, f: RateFlowModel, ctx: KeyCtx): boolean {
     }
     case "compare": {
       const opp = f.currentRated?.opponent;
-      if (!f.current || !opp || f.notice) return false;
+      if (!f.current || !opp || f.scored) return false;
       if (key === "ArrowLeft") return void f.choose(f.current.place), true;
       if (key === "ArrowRight") return void f.choose(opp), true;
       if (key === "ArrowDown" || key === "t") return f.tooTough(), true;

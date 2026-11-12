@@ -57,7 +57,8 @@ private struct NearContent: View {
                 }
             }
         }
-        .task { await spot.start() }
+        // Under 5 rated there are no picks, so no location prompt: the remembered spot or a city search.
+        .task(id: progress.picksUnlocked) { await spot.start(prompt: progress.picksUnlocked) }
         .task(id: progress.picksUnlocked ? model.key(spot: spot.spot) : nil) {
             // Under 5 rated there are no picks to ask for.
             guard progress.picksUnlocked else { return }

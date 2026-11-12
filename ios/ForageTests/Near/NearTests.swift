@@ -58,6 +58,38 @@ struct NearSpotTests {
         #expect(model.spot?.label == "Lisbon")
         #expect(model.notice == NearSpotMessage.unavailable)
     }
+
+    @Test @MainActor func noPromptWithoutSpotOffersSearch() async {
+        var fixes = 0
+        let model = SpotModel(fix: { fixes += 1; return LatLng(lat: 10, lng: 20) }, isDenied: { false }, defaults: RecFixture.defaults())
+        await model.start(prompt: false)
+        #expect(fixes == 0)
+        #expect(model.state == .unavailable(""))
+        #expect(model.message == nil)
+        await model.start(prompt: true)
+        #expect(fixes == 1)
+        #expect(model.spot?.label == "Your location")
+    }
+
+    @Test @MainActor func noPromptKeepsRememberedSpot() async {
+        var fixes = 0
+        let defaults = RecFixture.defaults()
+        NearSpotMemory.save(NearSpot(lat: 1, lng: 2, label: "Lisbon"), to: defaults)
+        let model = SpotModel(fix: { fixes += 1; return nil }, isDenied: { false }, defaults: defaults)
+        await model.start(prompt: false)
+        #expect(fixes == 0)
+        #expect(model.spot?.label == "Lisbon")
+        #expect(model.message == nil)
+    }
+
+    @Test @MainActor func noPromptStillRefreshesWhenAlreadyAllowed() async {
+        var fixes = 0
+        let model = SpotModel(fix: { fixes += 1; return LatLng(lat: 10, lng: 20) }, isDenied: { false }, isAllowed: { true }, defaults: RecFixture.defaults())
+        await model.start(prompt: false)
+        await model.start(prompt: true)
+        #expect(fixes == 1)
+        #expect(model.spot?.label == "Your location")
+    }
 }
 
 @Suite("Near me picks")

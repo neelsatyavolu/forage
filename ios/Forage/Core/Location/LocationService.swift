@@ -35,6 +35,8 @@ final class LocationService: NSObject {
 
     /// Denied or restricted: show an area field and a button to Settings instead.
     var isDenied: Bool { authorization == .denied || authorization == .restricted }
+    /// Already allowed, so a fix shows no prompt.
+    var isAllowed: Bool { authorization == .authorizedWhenInUse || authorization == .authorizedAlways }
 
     /// One location fix, asking for when-in-use permission if needed. Nil when denied,
     /// unavailable or timed out.
